@@ -180,6 +180,35 @@ impl HLCTimestamp {
 
         Ok(Self::new(self.millis, self.counter, msg.node))
     }
+        /// packs the HLCTimestamp object into a fixed size slice of bytes
+        pub fn pack(self) -> [u8; 14] {
+            let mut output = [0_u8; 14];
+            let me = self.millis.to_le_bytes();
+            let ce = self.counter.to_le_bytes();
+            let ne = self.node.to_le_bytes();
+            output[0] = me[0];
+            (&mut output[0..8]).copy_from_slice(&me);
+            (&mut output[8..10]).copy_from_slice(&ce);
+            (&mut output[10..14]).copy_from_slice(&ne);
+            output
+        }
+        /// unpacks a slize of bytes into an HLCTimestamp object
+        pub fn unpack(buffer: &[u8]) -> Option<Self> {
+            if buffer.len() != 14 {
+                return None;
+            }
+            let mut millis: [u8; 8] = [0_u8; 8];
+            let mut counter: [u8; 2] = [0, 0];
+            let mut node: [u8; 4] = [0_u8; 4];
+            millis.copy_from_slice(&buffer[0..8]);
+            counter.copy_from_slice(&buffer[8..10]);
+            node.copy_from_slice(&buffer[10..14]);
+            Some(Self {
+                millis: u64::from_le_bytes(millis),
+                counter: u16::from_le_bytes(counter),
+                node: u32::from_le_bytes(node),
+            })
+        }
 }
 
 impl Display for HLCTimestamp {
@@ -249,6 +278,12 @@ mod tests {
         let ts = HLCTimestamp::new(get_unix_timestamp_ms(), 0, 0);
 
         let str_ts = ts.to_string();
-        HLCTimestamp::from_str(&str_ts).expect("Parse timestamp");
+        let hltc = HLCTimestamp::from_str(&str_ts).expect("Parse timestamp");
+        assert_eq!(hltc, ts);
+
+
+        let packed_hltc = ts.pack();
+        let unpacked_hltc = HLCTimestamp::unpack(&packed_hltc[..]).unwrap();
+        assert_eq!(unpacked_hltc, hltc);
     }
 }

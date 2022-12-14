@@ -1,0 +1,22 @@
+[package]
+name = "datacake-sled"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+sled = "0.34"
+datacake-crdt = { version = "0.3", path = "../datacake-crdt" }
+datacake-cluster = { version = "0.1", path = "../datacake-cluster", features = ["test-utils"]}
+anyhow = "1"
+bytes = "1"
+async-trait = "0.1"
+serde = {version = "1", features = ["derive"]}
+serde_json = "1"
+thiserror = "1"
+tokio = { version = "1", features = ["full"] }
+log = "0.4"
+[dev-dependencies]
+tracing = "0.1.37"
+tracing-subscriber = "0.3.16"

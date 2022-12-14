@@ -27,7 +27,7 @@ impl Document {
             data: data.into(),
         }
     }
-    pub fn pack(&self)  -> Vec<u8> {
+    pub fn pack(&self) -> Vec<u8> {
         let mut buffer = Vec::with_capacity(std::mem::size_of_val(self));
         buffer.extend_from_slice(&self.id.to_le_bytes()[..]);
         buffer.extend_from_slice(&self.last_updated.pack()[..]);
@@ -37,8 +37,8 @@ impl Document {
     pub fn unpack(buffer: &[u8]) -> Self {
         let mut id: [u8; 8] = [0_u8; 8];
         id.copy_from_slice(&buffer[0..8]);
-        let ts = HLCTimestamp::unpack(&buffer[8..8+14]).unwrap();
-        let data =bytes::Bytes::from(buffer[8+14..].to_vec());
+        let ts = HLCTimestamp::unpack(&buffer[8..8 + 14]).unwrap();
+        let data = bytes::Bytes::from(buffer[8 + 14..].to_vec());
         Self {
             id: u64::from_le_bytes(id),
             last_updated: ts,
@@ -579,6 +579,9 @@ mod test {
         let packed_doc = document.pack();
         let unpacked_doc = Document::unpack(&packed_doc);
         assert_eq!(document, unpacked_doc);
-        assert_eq!(String::from_utf8(unpacked_doc.data.to_vec()).unwrap(), "foobarbaz".to_string());
+        assert_eq!(
+            String::from_utf8(unpacked_doc.data.to_vec()).unwrap(),
+            "foobarbaz".to_string()
+        );
     }
 }

@@ -1,16 +1,12 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 pub mod error;
-use anyhow::{Result};
-
-use datacake_cluster::Document;
-use datacake_crdt::HLCTimestamp;
-use datacake_crdt::Key;
-use tokio::sync::{RwLock, RwLockWriteGuard, RwLockReadGuard};
-use datacake_cluster::BulkMutationError;
-use datacake_cluster::Storage;
+use anyhow::Result;
+use datacake_cluster::{BulkMutationError, Document, Storage};
+use datacake_crdt::{HLCTimestamp, Key};
 use models::{SledDocument, SledKey};
-use sled::{IVec};
+use sled::IVec;
+use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 #[derive(Clone)]
 pub struct SledStorage {
@@ -23,9 +19,11 @@ pub struct SledStorage {
 
 impl SledStorage {
     pub fn open_temporary() -> anyhow::Result<Self> {
-       Ok(Self::open(sled::Config::default()
-            .temporary(true)
-            .print_profile_on_drop(true))?)
+        Ok(Self::open(
+            sled::Config::default()
+                .temporary(true)
+                .print_profile_on_drop(true),
+        )?)
     }
     pub fn open(conf: sled::Config) -> anyhow::Result<Self> {
         let db = conf.open()?;
@@ -66,7 +64,12 @@ impl SledStorage {
             return;
         }
     }
-    pub(crate) fn __is_tombstoned(&self, cache_lock: &RwLockReadGuard<'_, HashMap<String, HashSet<u64>>>, keyspace: &str, key: Key) -> bool {
+    pub(crate) fn __is_tombstoned(
+        &self,
+        cache_lock: &RwLockReadGuard<'_, HashMap<String, HashSet<u64>>>,
+        keyspace: &str,
+        key: Key,
+    ) -> bool {
         if let Some(keys) = cache_lock.get(keyspace) {
             return keys.contains(&key);
         }
@@ -102,12 +105,18 @@ impl Storage for SledStorage {
     ) -> Result<Self::MetadataIter, Self::Error> {
         let tree = self.db.open_tree(keyspace.as_bytes())?;
         let cache_lock = self.tombstoned_keys.read().await;
-        let list = tree.into_iter().flatten().map(|(key, value)| {
-            let sled_key: SledKey = (&key).into();
-            let is_tombstoned = self.__is_tombstoned(&cache_lock, keyspace, sled_key.0);
-            let doc: SledDocument = value.into();
-           (doc.id, doc.last_updated, is_tombstoned)
-        }).collect::<Vec<_>>().into_iter();
+        let list = tree
+            .into_iter()
+            .flatten()
+            .map(|(key, value)| {
+                let sled_key: SledKey = (&key).into();
+                let is_tombstoned =
+                    self.__is_tombstoned(&cache_lock, keyspace, sled_key.0);
+                let doc: SledDocument = value.into();
+                (doc.id, doc.last_updated, is_tombstoned)
+            })
+            .collect::<Vec<_>>()
+            .into_iter();
         Ok(Box::new(list))
     }
 
@@ -122,10 +131,12 @@ impl Storage for SledStorage {
             .open_tree(keyspace.as_bytes())
             .map_err(BulkMutationError::empty_with_error)?;
         let mut cache_lock = self.tombstoned_keys.write().await;
-        let keys: Vec<Key> = keys.map(|key| {
-            db_batch.remove(&key.to_be_bytes());
-            key
-        }).collect::<Vec<_>>();
+        let keys: Vec<Key> = keys
+            .map(|key| {
+                db_batch.remove(&key.to_be_bytes());
+                key
+            })
+            .collect::<Vec<_>>();
         self.__remove_tombstone(&mut cache_lock, keyspace, &keys[..]);
         tree.apply_batch(db_batch)
             .map_err(BulkMutationError::empty_with_error)?;
@@ -159,13 +170,16 @@ impl Storage for SledStorage {
             .open_tree(keyspace.as_bytes())
             .map_err(BulkMutationError::empty_with_error)?;
         let mut cache_lock = self.tombstoned_keys.write().await;
-        let keys: Vec<Key> = documents.into_iter().map(|doc| {
-            let doc_id = doc.id;
-            let sled_doc: SledDocument = doc.into();
-            let doc_bytes= sled_doc.id.to_be_bytes();
-            db_batch.insert(&doc_bytes, sled_doc);
-            doc_id
-        }).collect();
+        let keys: Vec<Key> = documents
+            .into_iter()
+            .map(|doc| {
+                let doc_id = doc.id;
+                let sled_doc: SledDocument = doc.into();
+                let doc_bytes = sled_doc.id.to_be_bytes();
+                db_batch.insert(&doc_bytes, sled_doc);
+                doc_id
+            })
+            .collect();
         self.__remove_tombstone(&mut cache_lock, keyspace, &keys[..]);
         tree.apply_batch(db_batch)
             .map_err(BulkMutationError::empty_with_error)?;
@@ -327,7 +341,6 @@ mod models {
 
     pub struct SledKey(pub Key);
 
-
     impl From<&IVec> for SledKey {
         fn from(s: &IVec) -> Self {
             let mut u_bytes: [u8; 8] = [0_u8; 8];
@@ -399,8 +412,8 @@ mod models {
 #[cfg(test)]
 mod tests {
     use datacake_cluster::test_suite;
-    //use datacake_cluster::test_suite;
 
+    //use datacake_cluster::test_suite;
     use crate::SledStorage;
     #[tokio::test]
     async fn test_sled_key_logic() {}

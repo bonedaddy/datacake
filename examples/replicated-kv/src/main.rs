@@ -1,4 +1,3 @@
-
 #[macro_use]
 extern crate tracing;
 
@@ -26,7 +25,8 @@ use serde_json::json;
 async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
     let args: Args = Args::parse();
-    let storage = datacake_sled::SledStorage::open(sled::Config::new().path(&args.data_dir))?;
+    let storage =
+        datacake_sled::SledStorage::open(sled::Config::new().path(&args.data_dir))?;
     let connection_cfg = ConnectionConfig::new(
         args.cluster_listen_addr,
         args.public_addr.unwrap_or(args.cluster_listen_addr),

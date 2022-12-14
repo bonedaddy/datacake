@@ -128,7 +128,9 @@ impl<S: Storage + Send + Sync + 'static> Storage for InstrumentedStorage<S> {
         info!(keyspace = keyspace, doc_ids = ?doc_ids, "multi_get");
         self.0.multi_get(keyspace, doc_ids.into_iter()).await
     }
-    async fn default_keyspace(&self) -> Option<String> { None } 
+    async fn default_keyspace(&self) -> Option<String> {
+        None
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -392,7 +394,9 @@ impl Storage for MockStorage {
         }
         panic!("multi_get operation was not expected to be called.");
     }
-    async fn default_keyspace(&self) -> Option<String> { None } 
+    async fn default_keyspace(&self) -> Option<String> {
+        None
+    }
 }
 
 #[derive(Debug, Default)]
@@ -414,7 +418,7 @@ impl Storage for MemStore {
     type Error = MemStoreError;
     type DocsIter = std::vec::IntoIter<Document>;
     type MetadataIter = std::vec::IntoIter<(Key, HLCTimestamp, bool)>;
-    
+
     async fn get_keyspace_list(&self) -> Result<Vec<String>, Self::Error> {
         Ok(self.metadata.read().keys().cloned().collect())
     }
@@ -559,5 +563,7 @@ impl Storage for MemStore {
         Ok(docs.into_iter())
     }
 
-    async fn default_keyspace(&self) -> Option<String> { None } 
+    async fn default_keyspace(&self) -> Option<String> {
+        None
+    }
 }

@@ -283,7 +283,7 @@ pub trait Storage {
     ///
     /// If the given `keyspace` does not exist, it should be created. A new keyspace name should
     /// not result in an error being returned by the storage trait.
-    /// 
+    ///
     /// If the document is marked as tombstoned, it should be untombstoned
     async fn multi_put(
         &self,
@@ -344,9 +344,7 @@ pub trait Storage {
     ) -> Result<Self::DocsIter, Self::Error>;
     /// some storage backends, such as sled have a default keyspace
     /// which needs to be taken into consideration for tests
-    async fn default_keyspace(
-        &self,
-    ) -> Option<String>;
+    async fn default_keyspace(&self) -> Option<String>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -368,7 +366,10 @@ pub mod test_suite {
         run_test_suite(MemStore::default(), false).await
     }
 
-    pub async fn run_test_suite<S: Storage + Send + Sync + 'static>(storage: S, sled: bool) {
+    pub async fn run_test_suite<S: Storage + Send + Sync + 'static>(
+        storage: S,
+        sled: bool,
+    ) {
         let mut clock = HLCTimestamp::new(get_unix_timestamp_ms(), 0, 0);
         info!("Starting test suite for storage: {}", type_name::<S>());
 
@@ -388,7 +389,7 @@ pub mod test_suite {
     async fn test_keyspace_semantics<S: Storage + Sync>(
         storage: &S,
         clock: &mut HLCTimestamp,
-        sled: bool
+        sled: bool,
     ) {
         info!("Starting test");
 
@@ -447,8 +448,7 @@ pub mod test_suite {
             .expect("Get keyspace list");
         {
             assert_eq!(
-                keyspace_list,
-                check_list,
+                keyspace_list, check_list,
                 "Returned keyspace list (left) should match value provided (right)."
             );
         }
@@ -644,7 +644,7 @@ pub mod test_suite {
         clock: &mut HLCTimestamp,
     ) {
         info!("Starting test");
-        
+
         static KEYSPACE: &str = "persistence-test-keyspace";
 
         let res = storage.get(KEYSPACE, 1).await;

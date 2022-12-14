@@ -407,21 +407,27 @@ where
 
     let res = tokio::spawn(handle_modified(client, keyspace, modified, ctx));
 
-    let mut watcher = ProgressWatcher::new(progress_tracker, KEYSPACE_SYNC_TIMEOUT);
-    let mut interval = interval(Duration::from_millis(250));
+    // this seems to be basically useless as it doesnt currently do anything
+    // instead lets just sleep for the KEYSPACE_SYNC_TIMEOUT
+    //let mut watcher = ProgressWatcher::new(progress_tracker, KEYSPACE_SYNC_TIMEOUT);
+    /*let mut interval = interval(Duration::from_millis(1000));
     loop {
         interval.tick().await;
         if watcher.has_expired() {
             res.abort();
             removal_task.await??;
-            return Err(anyhow!("Task timed out and could not be completed."));
+            //return Err(anyhow!("Task timed out and could not be completed."));
+            // the timeout isn't necessarily problematic since it usually means there was nothing to sync
+            return Ok(());
         }
 
         if watcher.is_done() {
             break;
         }
-    }
+    }*/
 
+    tokio::time::sleep(KEYSPACE_SYNC_TIMEOUT).await;
+    res.abort();
     removal_task.await??;
 
     Ok(())

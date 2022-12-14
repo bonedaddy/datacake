@@ -43,11 +43,25 @@ async fn main() -> Result<()> {
         ClusterOptions::default(),
     )
     .await?;
-
+    use axum::error_handling::HandleErrorLayer;
+    use tower::ServiceBuilder;
+    use tower_http::trace::TraceLayer;
     let handle = cluster.handle();
 
     let app = Router::new()
-        .route("/:keyspace/:key", get(get_value).post(set_value))
+        .route(
+            "/:keyspace/:key",
+            get(get_value).post(set_value).delete(remove_value),
+        )
+        .layer(
+            ServiceBuilder::new()
+                // Handle errors from middleware
+                .layer(HandleErrorLayer::new(handle_error))
+                .load_shed()
+                .concurrency_limit(64)
+                .timeout(std::time::Duration::from_secs(5))
+                .layer(TraceLayer::new_for_http()),
+        )
         .with_state(handle);
 
     info!("listening on {}", args.rest_listen_addr);
@@ -59,7 +73,15 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
-
+use axum::response::IntoResponse;
+use axum::BoxError;
+async fn handle_error(error: BoxError) -> impl IntoResponse {
+    return (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        format!("Something went wrong: {}", error),
+    )
+        .into_response();
+}
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 pub struct Args {
@@ -137,7 +159,31 @@ async fn set_value(
     );
 
     handle
-        .put(&params.keyspace, params.key, data, Consistency::EachQuorum)
+        .put(&params.keyspace, params.key, data, Consistency::All)
+        .await
+        .map_err(|e| {
+            error!(error = ?e, doc_id = params.key, "Failed to fetch doc.");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(Json(json!({
+        "key": params.key,
+        "keyspace": params.keyspace,
+    })))
+}
+
+async fn remove_value(
+    Path(params): Path<Params>,
+    State(handle): State<DatacakeHandle<SledStorage>>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    info!(
+        doc_id = params.key,
+        keyspace = params.keyspace,
+        "Removing document!"
+    );
+
+    handle
+        .del(&params.keyspace, params.key, Consistency::All)
         .await
         .map_err(|e| {
             error!(error = ?e, doc_id = params.key, "Failed to fetch doc.");

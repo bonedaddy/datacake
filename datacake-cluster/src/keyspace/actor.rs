@@ -30,7 +30,6 @@ where
         state,
         change_timestamp,
     };
-    tracing::info!("spawning keyspace actor {}", name);
     ks.spawn_actor_with_name(name).await
 }
 

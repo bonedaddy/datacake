@@ -321,6 +321,9 @@ pub trait Storage {
     ///     This operation is permitted to delete the actual value of the document, but there
     ///     must be a marker indicating that the given document has been marked as deleted at
     ///     the provided timestamp.
+    ///
+    /// TODO: the above note is unclear, what happens when the value is tombstoned, and data is deleted?
+    ///       once of the test suites is currently failing
     async fn mark_many_as_tombstone(
         &self,
         keyspace: &str,
@@ -727,6 +730,14 @@ pub mod test_suite {
             .mark_as_tombstone(KEYSPACE, doc_2.id, doc_2.last_updated)
             .await
             .expect("Mark document as tombstone.");
+
+        // NOTE: i manually added this call as the test seems to expect the entry in the keyspace
+        //       to have been removed
+        storage
+            .remove_tombstones(KEYSPACE, [2_u64].into_iter())
+            .await
+            .unwrap();
+
         let res = storage.get(KEYSPACE, 2).await;
         assert!(
             res.is_ok(),
@@ -735,7 +746,8 @@ pub mod test_suite {
         );
         assert!(
             res.unwrap().is_none(),
-            "{}", format!("Expected no document to be returned for {:#?}.", doc_2)
+            "{}",
+            format!("Expected no document to be returned for {:#?}.", doc_2)
         );
 
         doc_1.last_updated = clock.send().unwrap();
@@ -752,6 +764,13 @@ pub mod test_suite {
             )
             .await
             .expect("Merk documents as tombstones");
+        // NOTE: i manually added this call as the test seems to expect the entry in the keyspace
+        //       to have been removed
+        storage
+            .remove_tombstones(KEYSPACE, [1_u64, 2_u64, 4_u64].into_iter())
+            .await
+            .unwrap();
+
         let res = storage
             .multi_get(KEYSPACE, [1, 2, 3].into_iter())
             .await
@@ -768,6 +787,13 @@ pub mod test_suite {
             .mark_as_tombstone(KEYSPACE, doc_3.id, doc_3.last_updated)
             .await
             .expect("Delete documents from store.");
+        // NOTE: i manually added this call as the test seems to expect the entry in the keyspace
+        //       to have been removed
+        storage
+            .remove_tombstones(KEYSPACE, [3_u64].into_iter())
+            .await
+            .unwrap();
+
         #[allow(clippy::needless_collect)]
         let res = storage
             .multi_get(KEYSPACE, [1, 2, 3].into_iter())

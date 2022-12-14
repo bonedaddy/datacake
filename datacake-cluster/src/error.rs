@@ -48,4 +48,6 @@ pub enum DatacakeError<E: Error + Send + 'static> {
     #[error("Rpc Error: ({0}) - {1}")]
     /// An error occurred during RPC communication with other nodes.
     RpcError(SocketAddr, tonic::Status),
+    #[error("connection timed out")]
+    Timeout,
 }

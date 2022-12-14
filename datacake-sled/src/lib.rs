@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 pub mod error;
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use datacake_cluster::{BulkMutationError, Document, Storage};
 use datacake_crdt::{get_unix_timestamp_ms, HLCTimestamp, Key};
 use models::{Metadata, SledDocument, SledKey};
@@ -92,8 +92,9 @@ impl Storage for SledStorage {
     ) -> Result<(), BulkMutationError<Self::Error>> {
         use sled::transaction::ConflictableTransactionError;
         use sled::Transactional;
-        let meta_tree_key = metadata_keyspace(keyspace.as_bytes());
-        let data_tree_key = data_keyspace(keyspace.as_bytes());
+        let keyspace_bytes = keyspace.as_bytes();
+        let meta_tree_key = metadata_keyspace(keyspace_bytes);
+        let data_tree_key = data_keyspace(keyspace_bytes);
 
         let keys = keys.collect::<Vec<_>>();
         let meta_tree = self
@@ -111,7 +112,6 @@ impl Storage for SledStorage {
                 let doc_key = key.to_be_bytes();
                 match data_tx.get(&doc_key) {
                     Ok(Some(data)) => {
-                        let mut sled_document: SledDocument = data.into();
                         let mut meta_data: Metadata = match meta_tx.get(&doc_key) {
                             Ok(Some(value)) => value.into(),
                             _ => return,
@@ -119,8 +119,6 @@ impl Storage for SledStorage {
                         if !meta_data.tombstoned {
                             return;
                         }
-                        sled_document.set_as_tombstone();
-                        let sled_ivec: IVec = sled_document.into();
                         data_db_batch.remove(&doc_key);
                         meta_db_batch.remove(&doc_key);
                     },
@@ -129,8 +127,6 @@ impl Storage for SledStorage {
             });
             data_tx.apply_batch(&data_db_batch)?;
             meta_tx.apply_batch(&meta_db_batch)?;
-            data_tx.flush();
-            meta_tx.flush();
             Ok::<(), ConflictableTransactionError<()>>(())
         }) {
             return Err(BulkMutationError::new(
@@ -138,9 +134,6 @@ impl Storage for SledStorage {
                 vec![],
             ));
         }
-        if let Err(err) = self.db.flush_async().await {
-            log::error!("database flush failed {:#?}", err);
-        };
         Ok(())
     }
 
@@ -156,11 +149,11 @@ impl Storage for SledStorage {
         keyspace: &str,
         documents: impl Iterator<Item = Document> + Send,
     ) -> Result<(), BulkMutationError<Self::Error>> {
-        log::info!("multi put");
         use sled::transaction::ConflictableTransactionError;
         use sled::Transactional;
-        let meta_keyspace = metadata_keyspace(keyspace.as_bytes());
-        let data_keyspace = data_keyspace(keyspace.as_bytes());
+        let keyspace_bytes = keyspace.as_bytes();
+        let meta_keyspace = metadata_keyspace(keyspace_bytes);
+        let data_keyspace = data_keyspace(keyspace_bytes);
 
         let meta_tree = self
             .db
@@ -190,15 +183,12 @@ impl Storage for SledStorage {
             });
             meta_tx.apply_batch(&meta_db_batch)?;
             data_tx.apply_batch(&data_db_batch)?;
-            meta_tx.flush();
-            data_tx.flush();
             Ok::<(), ConflictableTransactionError<()>>(())
         }) {
             log::error!("multiput failed failed {:#?}", err);
-            return Err(BulkMutationError::empty_with_error(sled::Error::Unsupported(format!("{:#?}", err))));
-        };
-        if let Err(err) = self.db.flush_async().await {
-            log::error!("database flush failed {:#?}", err);
+            return Err(BulkMutationError::empty_with_error(
+                sled::Error::Unsupported(format!("{:#?}", err)),
+            ));
         };
         Ok(())
     }
@@ -209,20 +199,25 @@ impl Storage for SledStorage {
         doc_id: Key,
         timestamp: HLCTimestamp,
     ) -> Result<(), Self::Error> {
-        if let Err(err) = self.mark_many_as_tombstone(keyspace, [(doc_id, timestamp)].into_iter()).await {
+        if let Err(err) = self
+            .mark_many_as_tombstone(keyspace, [(doc_id, timestamp)].into_iter())
+            .await
+        {
             return Err(sled::Error::Unsupported(format!("{:#?}", err)));
         }
         Ok(())
     }
 
+    /// NOTE: the expected behavior seems to be that if the data record doesnt exist and this is called
+    /// then create the metadata tombstone record anyways
     async fn mark_many_as_tombstone(
         &self,
         keyspace: &str,
         documents: impl Iterator<Item = (Key, HLCTimestamp)> + Send,
     ) -> Result<(), BulkMutationError<Self::Error>> {
-        log::info!("mark many as tombstone");
-        let meta_keyspace = metadata_keyspace(keyspace.as_bytes());
-        let data_keyspace = data_keyspace(keyspace.as_bytes());
+        let keyspace_bytes = keyspace.as_bytes();
+        let meta_keyspace = metadata_keyspace(keyspace_bytes);
+        let data_keyspace = data_keyspace(keyspace_bytes);
         use sled::transaction::ConflictableTransactionError;
         use sled::Transactional;
         let meta_tree = self
@@ -252,24 +247,31 @@ impl Storage for SledStorage {
                                 meta_doc.last_updated = *ts;
                                 meta_batch.insert(&doc_key, meta_doc);
                                 data_batch.insert(&doc_key, sled_doc);
-                            }
+                            },
                             _ => continue,
                         }
                     },
-                    _ => (),
+                    _ => {
+                        // persist the metadata record
+                        meta_batch.insert(
+                            &doc_key,
+                            Metadata {
+                                id: *id,
+                                last_updated: *ts,
+                                tombstoned: true,
+                            },
+                        );
+                    },
                 }
             }
             meta_tx.apply_batch(&meta_batch)?;
             data_tx.apply_batch(&data_batch)?;
-            meta_tx.flush();
-            data_tx.flush();
             Ok::<(), ConflictableTransactionError<()>>(())
         }) {
             log::error!("mark many tombstone failed {:#?}", err);
-            return Err(BulkMutationError::empty_with_error(sled::Error::Unsupported(format!("{:#?}", err))));
-        };
-        if let Err(err) = self.db.flush_async().await {
-            log::error!("database flush failed {:#?}", err);
+            return Err(BulkMutationError::empty_with_error(
+                sled::Error::Unsupported(format!("{:#?}", err)),
+            ));
         };
         Ok(())
     }
@@ -282,16 +284,18 @@ impl Storage for SledStorage {
         match self.multi_get(keyspace, [doc_id].into_iter()).await {
             Ok(docs_iter) => {
                 let docs = docs_iter.collect::<Vec<_>>();
-                log::info!("found {} values for id {} in keyspace {}",docs.len(), doc_id, keyspace);
-                log::info!("docs {:#?}", docs);
                 if docs.is_empty() {
                     return Ok(None);
                 } else {
-                    return Ok(Some(docs[0].clone()))
+                    return Ok(Some(docs[0].clone()));
                 }
-            }
-            Err(err) => return Err(sled::Error::Unsupported(format!("failed to get docs {:#?}", err))),
-
+            },
+            Err(err) => {
+                return Err(sled::Error::Unsupported(format!(
+                    "failed to get docs {:#?}",
+                    err
+                )))
+            },
         }
     }
 
@@ -300,42 +304,49 @@ impl Storage for SledStorage {
         keyspace: &str,
         doc_ids: impl Iterator<Item = Key> + Send,
     ) -> Result<Self::DocsIter, Self::Error> {
-        log::info!("multi get");
         use sled::transaction::ConflictableTransactionError;
         use sled::Transactional;
-        let data_keyspace = data_keyspace(keyspace.as_bytes());
-        let meta_keyspace = metadata_keyspace(keyspace.as_bytes());
+        let keyspace_bytes = keyspace.as_bytes();
+        let data_keyspace = data_keyspace(keyspace_bytes);
+        let meta_keyspace = metadata_keyspace(keyspace_bytes);
         let data_db_tree = self.db.open_tree(data_keyspace)?;
         let meta_db_tree = self.db.open_tree(meta_keyspace)?;
         let doc_ids = doc_ids.collect::<Vec<_>>();
 
         match (&meta_db_tree, &data_db_tree).transaction(|(meta_tx, data_tx)| {
-                let mut buffer: Vec<Document> = Vec::with_capacity(doc_ids.len());
-                doc_ids.iter().for_each(|doc_id| {
-                    let doc_key = doc_id.to_be_bytes();
-                    match meta_tx.get(&doc_key) {
+            let mut buffer: Vec<Document> = Vec::with_capacity(doc_ids.len());
+            doc_ids.iter().for_each(|doc_id| {
+                let doc_key = doc_id.to_be_bytes();
+                match meta_tx.get(&doc_key) {
+                    Ok(Some(value)) => match data_tx.get(&doc_key) {
                         Ok(Some(value)) => {
-                            let meta_data: Metadata = value.into();   
-                            match data_tx.get(&doc_key) {
-                                Ok(Some(value)) => {
-                                    let sled_document: SledDocument = value.into();
-                                    let sled_doc: Document = sled_document.into();
-                                    buffer.push(sled_doc);
-                                },
-                                Ok(None) => (),
-                                Err(err) => log::error!("failed to fetch document id {}: {:#?}", doc_id, err),
-                            }
-
-                        }
+                            let sled_document: SledDocument = value.into();
+                            let sled_doc: Document = sled_document.into();
+                            buffer.push(sled_doc);
+                        },
                         Ok(None) => (),
-                        Err(err) => log::error!("failed to fetch metadata id {}: {:#?}", doc_id, err),
-                    }
-                });
-                Ok::<Vec<Document>, ConflictableTransactionError<()>>(buffer)
-            }) {
-                Ok(docs) => Ok(Box::new(docs.into_iter())),
-                Err(err) => return Err(sled::Error::Unsupported(format!("failed to get docs {:#?}", err))),
-            }
+                        Err(err) => log::error!(
+                            "failed to fetch document id {}: {:#?}",
+                            doc_id,
+                            err
+                        ),
+                    },
+                    Ok(None) => (),
+                    Err(err) => {
+                        log::error!("failed to fetch metadata id {}: {:#?}", doc_id, err)
+                    },
+                }
+            });
+            Ok::<Vec<Document>, ConflictableTransactionError<()>>(buffer)
+        }) {
+            Ok(docs) => Ok(Box::new(docs.into_iter())),
+            Err(err) => {
+                return Err(sled::Error::Unsupported(format!(
+                    "failed to get docs {:#?}",
+                    err
+                )))
+            },
+        }
     }
     async fn default_keyspace(&self) -> Option<String> {
         None

@@ -7,7 +7,7 @@ use std::time::Duration;
 use parking_lot::RwLock;
 use tonic::transport::{Channel, Endpoint, Error};
 
-pub const TIMEOUT_LIMIT: Duration = Duration::from_secs(2);
+pub const TIMEOUT_LIMIT: Duration = Duration::from_secs(4);
 pub const CONNECT_TIMEOUT_LIMIT: Duration = Duration::from_secs(2);
 
 #[derive(Clone, Default)]

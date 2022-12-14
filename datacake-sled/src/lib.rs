@@ -1,12 +1,10 @@
-use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 pub mod error;
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use datacake_cluster::{BulkMutationError, Document, Storage};
-use datacake_crdt::{get_unix_timestamp_ms, HLCTimestamp, Key};
-use models::{Metadata, SledDocument, SledKey};
+use datacake_crdt::{HLCTimestamp, Key};
+use models::{Metadata, SledDocument};
 use sled::IVec;
-use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 const METADATA_KEYSPACE_PREFIX: &[u8] = b"__metadata_";
 const DATA_KEYSPACE_PREFIX: &[u8] = b"_data_";
@@ -110,19 +108,16 @@ impl Storage for SledStorage {
             let mut meta_db_batch = sled::Batch::default();
             keys.iter().for_each(|key| {
                 let doc_key = key.to_be_bytes();
-                match data_tx.get(&doc_key) {
-                    Ok(Some(data)) => {
-                        let mut meta_data: Metadata = match meta_tx.get(&doc_key) {
-                            Ok(Some(value)) => value.into(),
-                            _ => return,
-                        };
-                        if !meta_data.tombstoned {
-                            return;
-                        }
-                        data_db_batch.remove(&doc_key);
-                        meta_db_batch.remove(&doc_key);
-                    },
-                    _ => return,
+                if let Ok(Some(_data)) = data_tx.get(doc_key) {
+                    let meta_data: Metadata = match meta_tx.get(doc_key) {
+                        Ok(Some(value)) => value.into(),
+                        _ => return,
+                    };
+                    if !meta_data.tombstoned {
+                        return;
+                    }
+                    data_db_batch.remove(&doc_key);
+                    meta_db_batch.remove(&doc_key);
                 }
             });
             data_tx.apply_batch(&data_db_batch)?;
@@ -236,11 +231,11 @@ impl Storage for SledStorage {
 
             for (id, ts) in documents.iter() {
                 let doc_key = id.to_be_bytes();
-                match data_tx.get(&doc_key) {
-                    Ok(Some((value))) => {
+                match data_tx.get(doc_key) {
+                    Ok(Some(value)) => {
                         let mut sled_doc: SledDocument = value.clone().into();
                         sled_doc.set_as_tombstone();
-                        match meta_tx.get(&doc_key) {
+                        match meta_tx.get(doc_key) {
                             Ok(Some(value)) => {
                                 let mut meta_doc: Metadata = value.into();
                                 meta_doc.tombstoned = true;
@@ -317,8 +312,8 @@ impl Storage for SledStorage {
             let mut buffer: Vec<Document> = Vec::with_capacity(doc_ids.len());
             doc_ids.iter().for_each(|doc_id| {
                 let doc_key = doc_id.to_be_bytes();
-                match meta_tx.get(&doc_key) {
-                    Ok(Some(value)) => match data_tx.get(&doc_key) {
+                match meta_tx.get(doc_key) {
+                    Ok(Some(_value)) => match data_tx.get(doc_key) {
                         Ok(Some(value)) => {
                             let sled_document: SledDocument = value.into();
                             let sled_doc: Document = sled_document.into();
@@ -475,7 +470,7 @@ mod tests {
     async fn test_storage_logic() {
         std::env::set_var("RUST_LOG", "debug");
         let _ = tracing_subscriber::fmt::try_init();
-        use datacake_cluster::test_utils::{InstrumentedStorage, MemStore};
+
         let storage = SledStorage::open_temporary().unwrap();
         test_suite::run_test_suite(storage, true).await;
     }

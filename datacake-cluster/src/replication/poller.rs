@@ -6,7 +6,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::anyhow;
 use crossbeam_channel::{Receiver, Sender};
 use crossbeam_utils::atomic::AtomicCell;
 use datacake_crdt::{HLCTimestamp, StateChanges};
@@ -26,7 +25,6 @@ use crate::keyspace::{
 };
 use crate::replication::{MembershipChanges, MAX_CONCURRENT_REQUESTS};
 use crate::rpc::ReplicationClient;
-use crate::storage::ProgressWatcher;
 use crate::{Clock, ProgressTracker, PutContext, RpcNetwork, Storage};
 
 const INITIAL_KEYSPACE_WAIT: Duration = if cfg!(any(test, feature = "test-utils")) {

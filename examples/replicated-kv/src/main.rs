@@ -1,4 +1,3 @@
-mod storage;
 
 #[macro_use]
 extern crate tracing;
@@ -20,16 +19,14 @@ use datacake::cluster::{
     DatacakeCluster,
     DatacakeHandle,
 };
+use datacake_sled::SledStorage;
 use serde_json::json;
-
-use crate::storage::ShardedStorage;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
     let args: Args = Args::parse();
-
-    let storage = ShardedStorage::open_in_dir(&args.data_dir).await?;
+    let storage = datacake_sled::SledStorage::open(sled::Config::new().path(&args.data_dir))?;
     let connection_cfg = ConnectionConfig::new(
         args.cluster_listen_addr,
         args.public_addr.unwrap_or(args.cluster_listen_addr),
@@ -103,7 +100,7 @@ struct Params {
 
 async fn get_value(
     Path(params): Path<Params>,
-    State(handle): State<DatacakeHandle<ShardedStorage>>,
+    State(handle): State<DatacakeHandle<SledStorage>>,
 ) -> Result<Bytes, StatusCode> {
     info!(
         doc_id = params.key,
@@ -127,7 +124,7 @@ async fn get_value(
 
 async fn set_value(
     Path(params): Path<Params>,
-    State(handle): State<DatacakeHandle<ShardedStorage>>,
+    State(handle): State<DatacakeHandle<SledStorage>>,
     data: Bytes,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     info!(

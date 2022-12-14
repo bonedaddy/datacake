@@ -35,7 +35,7 @@ const INITIAL_KEYSPACE_WAIT: Duration = if cfg!(any(test, feature = "test-utils"
     Duration::from_secs(30)
 };
 const KEYSPACE_SYNC_TIMEOUT: Duration = if cfg!(test) {
-    Duration::from_secs(1)
+    Duration::from_secs(2)
 } else {
     Duration::from_secs(5)
 };
@@ -210,7 +210,7 @@ async fn read_repair_members<S>(
             Ok(info) => info,
         };
 
-        for change in info.changes {
+        for (idx, change) in info.changes.into_iter().enumerate() {
             let res = begin_keyspace_sync(
                 ctx,
                 change.keyspace.clone(),
@@ -227,6 +227,7 @@ async fn read_repair_members<S>(
                     keyspace = %change.keyspace,
                     target_node_id = %node_id,
                     target_node_addr = %addr,
+                    index = %idx,
                     "Failed to sync with node."
                 );
             } else {
@@ -387,7 +388,7 @@ async fn begin_keyspace_sync<S>(
 where
     S: Storage + Send + Sync + 'static,
 {
-    let channel = ctx.network.get_or_connect(target_rpc_addr).await?;
+    let channel = ctx.network.get_or_connect_lazy(target_rpc_addr);
     let keyspace = ctx.group.get_or_create_keyspace(&keyspace_name).await;
     let client = ReplicationClient::new(ctx.clock().clone(), channel.clone());
 
@@ -410,7 +411,6 @@ where
     let mut interval = interval(Duration::from_millis(250));
     loop {
         interval.tick().await;
-
         if watcher.has_expired() {
             res.abort();
             removal_task.await??;

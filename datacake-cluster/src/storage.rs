@@ -11,6 +11,7 @@ use tonic::transport::Channel;
 
 use crate::core::Document;
 
+#[derive(Debug)]
 /// A utility for tracking the progress a task has made.
 pub struct ProgressWatcher {
     inner: ProgressTracker,
@@ -395,7 +396,7 @@ pub mod test_suite {
 
         static KEYSPACE: &str = "first-keyspace";
         let check_list = if sled {
-            vec!["__sled__default".to_string(), "first-keyspace".to_string()]
+            vec![KEYSPACE.to_string()]
         } else {
             vec![KEYSPACE.to_string()]
         };

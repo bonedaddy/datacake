@@ -1,20 +1,38 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 pub mod error;
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use datacake_cluster::{BulkMutationError, Document, Storage};
-use datacake_crdt::{HLCTimestamp, Key};
-use models::{SledDocument, SledKey};
+use datacake_crdt::{get_unix_timestamp_ms, HLCTimestamp, Key};
+use models::{Metadata, SledDocument, SledKey};
 use sled::IVec;
 use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+
+const METADATA_KEYSPACE_PREFIX: &[u8] = b"__metadata_";
+const DATA_KEYSPACE_PREFIX: &[u8] = b"_data_";
+
+/// given a keyspace, format the name for its metadata keyspace
+pub fn metadata_keyspace(keyspace: &[u8]) -> Vec<u8> {
+    const META_LEN: usize = METADATA_KEYSPACE_PREFIX.len();
+    let mut buf = Vec::with_capacity(META_LEN + keyspace.len());
+    buf.extend_from_slice(METADATA_KEYSPACE_PREFIX);
+    buf.extend_from_slice(keyspace);
+    buf
+}
+
+/// given a keyspace, format the name for its data keyspace
+pub fn data_keyspace(keyspace: &[u8]) -> Vec<u8> {
+    const DATA_LEN: usize = DATA_KEYSPACE_PREFIX.len();
+    let mut buf = Vec::with_capacity(DATA_LEN + keyspace.len());
+    buf.extend_from_slice(DATA_KEYSPACE_PREFIX);
+    buf.extend_from_slice(keyspace);
+    buf
+}
 
 #[derive(Clone)]
 pub struct SledStorage {
     /// Our main db, this stores all of our documents directly.
     db: Arc<sled::Db>,
-    /// a pending list of doc ids that have been marked as tombstoned
-    /// but aren't yet deleted
-    tombstoned_keys: Arc<RwLock<HashMap<String, HashSet<Key>>>>,
 }
 
 impl SledStorage {
@@ -27,52 +45,7 @@ impl SledStorage {
     }
     pub fn open(conf: sled::Config) -> anyhow::Result<Self> {
         let db = conf.open()?;
-        Ok(Self {
-            db: Arc::new(db),
-            tombstoned_keys: Arc::new(RwLock::new(HashMap::with_capacity(128))),
-        })
-    }
-    pub(crate) fn __add_tombstone(
-        &self,
-        cache_lock: &mut RwLockWriteGuard<'_, HashMap<String, HashSet<u64>>>,
-        keyspace: &str,
-        keys: &[Key],
-    ) {
-        if let Some(cache_lock) = cache_lock.get_mut(keyspace) {
-            keys.iter().for_each(|key| {
-                cache_lock.insert(*key);
-            });
-        } else {
-            let mut hash_set = HashSet::with_capacity(keys.len());
-            keys.iter().for_each(|key| {
-                hash_set.insert(*key);
-            });
-            cache_lock.insert(keyspace.to_string(), hash_set);
-        }
-    }
-    pub(crate) fn __remove_tombstone(
-        &self,
-        cache_lock: &mut RwLockWriteGuard<'_, HashMap<String, HashSet<u64>>>,
-        keyspace: &str,
-        keys: &[Key],
-    ) {
-        if let Some(cache_lock) = cache_lock.get_mut(keyspace) {
-            keys.iter().for_each(|key| {
-                cache_lock.remove(key);
-            });
-        } else {
-        }
-    }
-    pub(crate) fn __is_tombstoned(
-        &self,
-        cache_lock: &RwLockReadGuard<'_, HashMap<String, HashSet<u64>>>,
-        keyspace: &str,
-        key: Key,
-    ) -> bool {
-        if let Some(keys) = cache_lock.get(keyspace) {
-            return keys.contains(&key);
-        }
-        false
+        Ok(Self { db: Arc::new(db) })
     }
 }
 
@@ -88,11 +61,12 @@ impl Storage for SledStorage {
             .tree_names()
             .iter()
             .filter_map(|tn| {
-                if let Ok(tn) = String::from_utf8(tn.to_vec()) {
-                    Some(tn)
-                } else {
-                    None
+                if let Some(meta_data_keyspace) = tn.strip_prefix(b"__metadata_") {
+                    if let Ok(tn) = String::from_utf8(meta_data_keyspace.to_vec()) {
+                        return Some(tn);
+                    }
                 }
+                None
             })
             .collect::<Vec<_>>();
         Ok(tree_names)
@@ -102,20 +76,12 @@ impl Storage for SledStorage {
         &self,
         keyspace: &str,
     ) -> Result<Self::MetadataIter, Self::Error> {
-        let tree = self.db.open_tree(keyspace.as_bytes())?;
-        let cache_lock = self.tombstoned_keys.read().await;
-        let list = tree
-            .into_iter()
-            .flatten()
-            .map(|(key, value)| {
-                let sled_key: SledKey = (&key).into();
-                let is_tombstoned =
-                    self.__is_tombstoned(&cache_lock, keyspace, sled_key.0);
-                let doc: SledDocument = value.into();
-                (doc.id, doc.last_updated, is_tombstoned)
-            })
-            .collect::<Vec<_>>()
-            .into_iter();
+        let tree_key = metadata_keyspace(keyspace.as_bytes());
+        let tree = self.db.open_tree(tree_key)?;
+        let list = tree.into_iter().flatten().map(|(_, value)| {
+            let doc: Metadata = value.into();
+            (doc.id, doc.last_updated, doc.tombstoned)
+        });
         Ok(Box::new(list))
     }
 
@@ -124,37 +90,75 @@ impl Storage for SledStorage {
         keyspace: &str,
         keys: impl Iterator<Item = Key> + Send,
     ) -> Result<(), BulkMutationError<Self::Error>> {
-        let mut db_batch = sled::Batch::default();
-        let tree = self
+        use sled::transaction::ConflictableTransactionError;
+        use sled::Transactional;
+        let meta_tree_key = metadata_keyspace(keyspace.as_bytes());
+        let data_tree_key = data_keyspace(keyspace.as_bytes());
+
+        let keys = keys.collect::<Vec<_>>();
+        let meta_tree = self
             .db
-            .open_tree(keyspace.as_bytes())
+            .open_tree(meta_tree_key)
             .map_err(BulkMutationError::empty_with_error)?;
-        let mut cache_lock = self.tombstoned_keys.write().await;
-        let keys: Vec<Key> = keys
-            .map(|key| {
-                db_batch.remove(&key.to_be_bytes());
-                key
-            })
-            .collect::<Vec<_>>();
-        self.__remove_tombstone(&mut cache_lock, keyspace, &keys[..]);
-        tree.apply_batch(db_batch)
+        let data_tree = self
+            .db
+            .open_tree(data_tree_key)
             .map_err(BulkMutationError::empty_with_error)?;
-        drop(cache_lock);
-        tree.flush_async()
-            .await
-            .map_err(BulkMutationError::empty_with_error)?;
+        if let Err(err) = (&meta_tree, &data_tree).transaction(|(meta_tx, data_tx)| {
+            let mut data_db_batch = sled::Batch::default();
+            let mut meta_db_batch = sled::Batch::default();
+            keys.iter().for_each(|key| {
+                let doc_key = key.to_be_bytes();
+                match data_tx.get(&doc_key) {
+                    Ok(Some(data)) => {
+                        let mut sled_document: SledDocument = data.into();
+                        sled_document.set_as_tombstone();
+                        let sled_ivec: IVec = sled_document.into();
+                        data_db_batch.insert(&doc_key, sled_ivec);
+                        meta_db_batch.remove(&doc_key);
+                    },
+                    _ => return,
+                }
+            });
+            data_tx.apply_batch(&data_db_batch)?;
+            meta_tx.apply_batch(&meta_db_batch)?;
+            Ok::<(), ConflictableTransactionError<()>>(())
+        }) {
+            return Err(BulkMutationError::new(
+                sled::Error::Unsupported(format!("{:#?}", err)),
+                vec![],
+            ));
+        }
+
         Ok(())
     }
 
     async fn put(&self, keyspace: &str, doc: Document) -> Result<(), Self::Error> {
-        let doc_id = doc.id;
-        let sled_doc: SledDocument = doc.into();
-        let doc_bytes = sled_doc.id.to_be_bytes();
-        let tree = self.db.open_tree(keyspace.as_bytes())?;
-        let mut cache_lock = self.tombstoned_keys.write().await;
-        self.__remove_tombstone(&mut cache_lock, keyspace, &[doc_id]);
-        tree.insert(doc_bytes, sled_doc)?;
-        tree.flush_async().await?;
+        use sled::transaction::ConflictableTransactionError;
+        use sled::Transactional;
+        let doc_bytes = doc.id.to_be_bytes();
+
+        let meta_keyspace = metadata_keyspace(keyspace.as_bytes());
+        let data_keyspace = data_keyspace(keyspace.as_bytes());
+
+        let meta_tree = self.db.open_tree(meta_keyspace)?;
+        let data_tree = self.db.open_tree(data_keyspace)?;
+        if let Err(err) = (&meta_tree, &data_tree).transaction(|(meta_tx, data_tx)| {
+            let sled_doc: SledDocument = doc.clone().into();
+            let sled_data: IVec = sled_doc.into();
+            data_tx.insert(&doc_bytes, sled_data)?;
+            meta_tx.insert(
+                &doc_bytes,
+                Metadata {
+                    id: doc.id,
+                    last_updated: doc.last_updated,
+                    tombstoned: false,
+                },
+            )?;
+            Ok::<(), ConflictableTransactionError<()>>(())
+        }) {
+            log::error!("transaction encountered error {:#?}", err);
+        };
         Ok(())
     }
 
@@ -163,29 +167,44 @@ impl Storage for SledStorage {
         keyspace: &str,
         documents: impl Iterator<Item = Document> + Send,
     ) -> Result<(), BulkMutationError<Self::Error>> {
-        let mut db_batch = sled::Batch::default();
-        let tree = self
+        use sled::transaction::ConflictableTransactionError;
+        use sled::Transactional;
+        let meta_keyspace = metadata_keyspace(keyspace.as_bytes());
+        let data_keyspace = data_keyspace(keyspace.as_bytes());
+
+        let meta_tree = self
             .db
-            .open_tree(keyspace.as_bytes())
+            .open_tree(meta_keyspace)
             .map_err(BulkMutationError::empty_with_error)?;
-        let mut cache_lock = self.tombstoned_keys.write().await;
-        let keys: Vec<Key> = documents
-            .into_iter()
-            .map(|doc| {
-                let doc_id = doc.id;
-                let sled_doc: SledDocument = doc.into();
-                let doc_bytes = sled_doc.id.to_be_bytes();
-                db_batch.insert(&doc_bytes, sled_doc);
-                doc_id
-            })
-            .collect();
-        self.__remove_tombstone(&mut cache_lock, keyspace, &keys[..]);
-        tree.apply_batch(db_batch)
+        let data_tree = self
+            .db
+            .open_tree(data_keyspace)
             .map_err(BulkMutationError::empty_with_error)?;
-        drop(cache_lock);
-        tree.flush_async()
-            .await
-            .map_err(BulkMutationError::empty_with_error)?;
+        let documents = documents.collect::<Vec<_>>();
+        if let Err(err) = (&meta_tree, &data_tree).transaction(|(meta_tx, data_tx)| {
+            let mut meta_db_batch = sled::Batch::default();
+            let mut data_db_batch = sled::Batch::default();
+
+            documents.iter().for_each(|doc| {
+                let sled_doc: SledDocument = doc.clone().into();
+                let sled_data: IVec = sled_doc.into();
+                data_db_batch.insert(&doc.id.to_be_bytes(), sled_data);
+                meta_db_batch.insert(
+                    &doc.id.to_be_bytes(),
+                    Metadata {
+                        id: doc.id,
+                        last_updated: doc.last_updated,
+                        tombstoned: false,
+                    },
+                );
+            });
+            meta_tx.apply_batch(&meta_db_batch)?;
+            data_tx.apply_batch(&data_db_batch)?;
+            Ok::<(), ConflictableTransactionError<()>>(())
+        }) {
+            log::error!("transaction encountered error {:#?}", err);
+        };
+
         Ok(())
     }
 
@@ -195,17 +214,38 @@ impl Storage for SledStorage {
         doc_id: Key,
         timestamp: HLCTimestamp,
     ) -> Result<(), Self::Error> {
-        let tree = self.db.open_tree(keyspace.as_bytes())?;
-        let doc_bytes = doc_id.to_be_bytes();
-        if let Ok(Some(value)) = tree.get(doc_bytes) {
-            let mut sled_doc: SledDocument = value.into();
-            sled_doc.mark_as_tombstone(timestamp);
-            let mut cache_lock = self.tombstoned_keys.write().await;
-            self.__add_tombstone(&mut cache_lock, keyspace, &[doc_id]);
-            tree.insert(doc_bytes, sled_doc)?;
-            drop(cache_lock);
-            tree.flush_async().await?;
-        }
+        let meta_keyspace = metadata_keyspace(keyspace.as_bytes());
+        let data_keyspace = data_keyspace(keyspace.as_bytes());
+
+        let doc_key = doc_id.to_be_bytes();
+
+        use sled::transaction::ConflictableTransactionError;
+        use sled::Transactional;
+        let meta_tree = self.db.open_tree(meta_keyspace)?;
+        let data_tree = self.db.open_tree(data_keyspace)?;
+        if let Err(err) = (&meta_tree, &data_tree).transaction(|(meta_tx, data_tx)| {
+            match data_tx.get(&doc_key) {
+                Ok(Some((value))) => {
+                    let mut sled_doc: SledDocument = value.clone().into();
+                    sled_doc.set_as_tombstone();
+                    meta_tx.insert(
+                        &doc_key,
+                        Metadata {
+                            id: sled_doc.id,
+                            last_updated: timestamp,
+                            tombstoned: true,
+                        },
+                    )?;
+                    data_tx.insert(&doc_key, sled_doc)?;
+                },
+                _ => (),
+            }
+
+            //data_tx.remove(&doc_key)?;
+            Ok::<(), ConflictableTransactionError<()>>(())
+        }) {
+            log::error!("transaction encountered error {:#?}", err);
+        };
         Ok(())
     }
 
@@ -214,46 +254,50 @@ impl Storage for SledStorage {
         keyspace: &str,
         documents: impl Iterator<Item = (Key, HLCTimestamp)> + Send,
     ) -> Result<(), BulkMutationError<Self::Error>> {
-        let mut db_batch = sled::Batch::default();
-        let tree = self
+        let meta_keyspace = metadata_keyspace(keyspace.as_bytes());
+        let data_keyspace = data_keyspace(keyspace.as_bytes());
+        use sled::transaction::ConflictableTransactionError;
+        use sled::Transactional;
+        let meta_tree = self
             .db
-            .open_tree(keyspace.as_bytes())
+            .open_tree(meta_keyspace)
             .map_err(BulkMutationError::empty_with_error)?;
-        let mut cache_lock = self.tombstoned_keys.write().await;
-        let doc_ids = documents.into_iter().filter_map(|(doc_id, ts)| {
-            let doc_bytes = doc_id.to_be_bytes();
-            let mut sled_doc: SledDocument = match tree.get(doc_bytes) {
-                Ok(Some(d)) => d.into(),
-                Ok(None) => {
-                    // for some reason it looks like datacake expects cases like this
-                    // to actually insert the object, but with empty data.
-                    //
-                    // todo: report this
-                    log::warn!("found no records for doc_id {}",doc_id);
-                    let doc = Document::new(doc_id, ts, vec![]);
-                    doc.into()
-                },
-                Err(err) => {
-                    log::warn!("found failed to find records for doc_id {}, keyspace {}, {:#?}",doc_id, keyspace, err);
-                    // todo: log
-                    return None;
-                },
-            };
-            sled_doc.mark_as_tombstone(ts);
-            db_batch.insert(&doc_bytes, sled_doc);
-            Some(doc_id)
-        }).collect::<Vec<Key>>();
-
-        self.__add_tombstone(&mut cache_lock, keyspace, &doc_ids[..]);
-
-        tree.apply_batch(db_batch)
+        let data_tree = self
+            .db
+            .open_tree(data_keyspace)
             .map_err(BulkMutationError::empty_with_error)?;
-        // clean the lock
-        drop(cache_lock);
 
-        tree.flush_async()
-            .await
-            .map_err(BulkMutationError::empty_with_error)?;
+        let documents = documents.collect::<Vec<_>>();
+        if let Err(err) = (&meta_tree, &data_tree).transaction(|(meta_tx, data_tx)| {
+            let mut meta_batch = sled::Batch::default();
+            let mut data_batch = sled::Batch::default();
+
+            for (id, ts) in documents.iter() {
+                let doc_key = id.to_be_bytes();
+                match data_tx.get(&doc_key) {
+                    Ok(Some((value))) => {
+                        let mut sled_doc: SledDocument = value.clone().into();
+                        sled_doc.set_as_tombstone();
+                        meta_batch.insert(
+                            &doc_key,
+                            Metadata {
+                                id: sled_doc.id,
+                                last_updated: *ts,
+                                tombstoned: true,
+                            },
+                        );
+                        data_batch.insert(&doc_key, sled_doc);
+                    },
+                    _ => (),
+                }
+            }
+            meta_tx.apply_batch(&meta_batch)?;
+            data_tx.apply_batch(&data_batch)?;
+            Ok::<(), ConflictableTransactionError<()>>(())
+        }) {
+            log::error!("transaction encountered error {:#?}", err);
+        };
+
         Ok(())
     }
 
@@ -262,30 +306,17 @@ impl Storage for SledStorage {
         keyspace: &str,
         doc_id: Key,
     ) -> Result<Option<Document>, Self::Error> {
-        let cache_lock = self.tombstoned_keys.read().await;
-        if self.__is_tombstoned(&cache_lock, keyspace, doc_id) {
-            return Ok(None);
-        }
-        drop(cache_lock);
+        match self.multi_get(keyspace, [doc_id].into_iter()).await {
+            Ok(docs_iter) => {
+                let docs = docs_iter.collect::<Vec<_>>();
+                if docs.is_empty() {
+                    return Ok(None);
+                } else {
+                    return Ok(Some(docs[0].clone()))
+                }
+            }
+            Err(err) => return Err(sled::Error::Unsupported(format!("failed to get docs {:#?}", err))),
 
-        let tree = self.db.open_tree(keyspace.as_bytes())?;
-        let doc_id = doc_id.to_be_bytes();
-        match tree.get(doc_id) {
-            Ok(Some(d)) => {
-                let sled_doc: SledDocument = d.into();
-                Ok(Some(sled_doc.into()))
-            },
-            Ok(None) => Ok(None),
-            Err(err) => {
-                log::warn!(
-                    "found failed to find records for doc_id {}, keyspace {}, {:#?}",
-                    u64::from_be_bytes(doc_id),
-                    keyspace,
-                    err
-                );
-                // todo: log
-                return Err(sled::Error::CollectionNotFound(IVec::from(&doc_id)));
-            },
         }
     }
 
@@ -294,43 +325,44 @@ impl Storage for SledStorage {
         keyspace: &str,
         doc_ids: impl Iterator<Item = Key> + Send,
     ) -> Result<Self::DocsIter, Self::Error> {
-        let tree = self.db.open_tree(keyspace.as_bytes())?;
-        let cache_lock = self.tombstoned_keys.read().await;
-        let keyspace_lock = cache_lock.get(keyspace);
-        Ok(Box::new(
-            doc_ids
-                .into_iter()
-                .filter_map(|doc_id| {
-                    if let Some(keyspace_lock) = keyspace_lock {
-                        if keyspace_lock.contains(&doc_id) {
-                            return None;
-                        }
-                    }
-                    let doc_id = doc_id.to_be_bytes();
-                    match tree.get(doc_id) {
-                        Ok(Some(doc)) => {
-                            let sled_doc: SledDocument = doc.into();
-                            let doc: Document = sled_doc.into();
-                            Some(doc)
-                        },
-                        _ => {
-                            log::error!(
-                                "failed to lookup doc_id {}, keyspace {}",
-                                u64::from_be_bytes(doc_id),
-                                keyspace
-                            );
+        use sled::transaction::ConflictableTransactionError;
+        use sled::Transactional;
+        let data_keyspace = data_keyspace(keyspace.as_bytes());
+        let meta_keyspace = metadata_keyspace(keyspace.as_bytes());
+        let data_db_tree = self.db.open_tree(data_keyspace)?;
+        let meta_db_tree = self.db.open_tree(meta_keyspace)?;
+        let doc_ids = doc_ids.collect::<Vec<_>>();
 
-                            None // todo: handle
-                        },
+        match (&meta_db_tree, &data_db_tree).transaction(|(meta_tx, data_tx)| {
+                let mut buffer: Vec<Document> = Vec::with_capacity(doc_ids.len());
+                doc_ids.iter().for_each(|doc_id| {
+                    let doc_key = doc_id.to_be_bytes();
+                    match meta_tx.get(&doc_key) {
+                        Ok(Some(value)) => {
+                            let meta_data: Metadata = value.into();   
+                            if !meta_data.tombstoned {
+                                match data_tx.get(&doc_key) {
+                                    Ok(Some(value)) => {
+                                        let sled_document: SledDocument = value.into();
+                                        let sled_doc: Document = sled_document.into();
+                                        buffer.push(sled_doc);
+                                    },
+                                    _ => ()
+                                }
+                            }
+
+                        }
+                        _ => (),
                     }
-                })
-                .collect::<Vec<_>>()
-                .into_iter(),
-        ))
+                });
+                Ok::<Vec<Document>, ConflictableTransactionError<()>>(buffer)
+            }) {
+                Ok(docs) => Ok(Box::new(docs.into_iter())),
+                Err(err) => return Err(sled::Error::Unsupported(format!("failed to get docs {:#?}", err))),
+            }
     }
     async fn default_keyspace(&self) -> Option<String> {
-        const DEFAULT_SPACE: &str = "__sled__default";
-        Some(String::from(DEFAULT_SPACE))
+        None
     }
 }
 
@@ -361,6 +393,22 @@ mod models {
 
         /// The raw binary data of the document's value.
         pub data: bytes::Bytes,
+    }
+
+    impl SledDocument {
+        pub fn set_as_tombstone(&mut self) {
+            self.data.clear();
+        }
+    }
+
+    #[derive(Clone)]
+    pub struct Metadata {
+        pub id: Key,
+
+        /// The timestamp of when the document was last updated.
+        pub last_updated: HLCTimestamp,
+
+        pub tombstoned: bool,
     }
 
     impl From<Document> for SledDocument {
@@ -400,11 +448,26 @@ mod models {
         }
     }
 
-    impl SledDocument {
-        pub fn mark_as_tombstone(&mut self, ts: HLCTimestamp) {
-            self.data.clear();
-            self.last_updated = ts;
-            assert!(self.data.is_empty());
+    impl From<Metadata> for sled::IVec {
+        fn from(sd: Metadata) -> Self {
+            let mut buffer = Vec::with_capacity(std::mem::size_of_val(&sd));
+            buffer.extend_from_slice(&sd.id.to_le_bytes()[..]);
+            buffer.extend_from_slice(&sd.last_updated.pack()[..]);
+            buffer.push(sd.tombstoned as u8);
+            Self::from(buffer)
+        }
+    }
+
+    impl From<sled::IVec> for Metadata {
+        fn from(buffer: sled::IVec) -> Self {
+            let mut id: [u8; 8] = [0_u8; 8];
+            id.copy_from_slice(&buffer[0..8]);
+            let ts = HLCTimestamp::unpack(&buffer[8..8 + 14]).unwrap();
+            Self {
+                id: u64::from_le_bytes(id),
+                last_updated: ts,
+                tombstoned: buffer[8 + 14] != 0,
+            }
         }
     }
 }

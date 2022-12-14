@@ -218,6 +218,7 @@ impl Storage for SqliteStorage {
 
         Ok(Box::new(docs))
     }
+    async fn default_keyspace(&self) -> Option<String> { None }
 }
 
 mod queries {

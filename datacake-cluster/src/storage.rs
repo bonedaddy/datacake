@@ -283,6 +283,8 @@ pub trait Storage {
     ///
     /// If the given `keyspace` does not exist, it should be created. A new keyspace name should
     /// not result in an error being returned by the storage trait.
+    /// 
+    /// If the document is marked as tombstoned, it should be untombstoned
     async fn multi_put(
         &self,
         keyspace: &str,
@@ -340,6 +342,11 @@ pub trait Storage {
         keyspace: &str,
         doc_ids: impl Iterator<Item = Key> + Send,
     ) -> Result<Self::DocsIter, Self::Error>;
+    /// some storage backends, such as sled have a default keyspace
+    /// which needs to be taken into consideration for tests
+    async fn default_keyspace(
+        &self,
+    ) -> Option<String>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -358,16 +365,16 @@ pub mod test_suite {
     async fn test_suite_semantics() {
         use crate::test_utils::MemStore;
         let _ = tracing_subscriber::fmt::try_init();
-        run_test_suite(MemStore::default()).await
+        run_test_suite(MemStore::default(), false).await
     }
 
-    pub async fn run_test_suite<S: Storage + Send + Sync + 'static>(storage: S) {
+    pub async fn run_test_suite<S: Storage + Send + Sync + 'static>(storage: S, sled: bool) {
         let mut clock = HLCTimestamp::new(get_unix_timestamp_ms(), 0, 0);
         info!("Starting test suite for storage: {}", type_name::<S>());
 
         let storage = InstrumentedStorage(storage);
 
-        test_keyspace_semantics(&storage, &mut clock).await;
+        test_keyspace_semantics(&storage, &mut clock, sled).await;
         info!("test_keyspace_semantics OK");
 
         test_basic_persistence_test(&storage, &mut clock).await;
@@ -381,11 +388,17 @@ pub mod test_suite {
     async fn test_keyspace_semantics<S: Storage + Sync>(
         storage: &S,
         clock: &mut HLCTimestamp,
+        sled: bool
     ) {
         info!("Starting test");
 
         static KEYSPACE: &str = "first-keyspace";
-
+        let check_list = if sled {
+            vec!["__sled__default".to_string(), "first-keyspace".to_string()]
+        } else {
+            vec![KEYSPACE.to_string()]
+        };
+        println!("Ks list {:?}", check_list);
         let res = storage.iter_metadata(KEYSPACE).await;
         if let Err(e) = res {
             panic!(
@@ -432,11 +445,13 @@ pub mod test_suite {
             .get_keyspace_list()
             .await
             .expect("Get keyspace list");
-        assert_eq!(
-            keyspace_list,
-            vec![KEYSPACE.to_string()],
-            "Returned keyspace list (left) should match value provided (right)."
-        );
+        {
+            assert_eq!(
+                keyspace_list,
+                check_list,
+                "Returned keyspace list (left) should match value provided (right)."
+            );
+        }
 
         let metadata = storage
             .iter_metadata("second-keyspace")
@@ -629,7 +644,7 @@ pub mod test_suite {
         clock: &mut HLCTimestamp,
     ) {
         info!("Starting test");
-
+        
         static KEYSPACE: &str = "persistence-test-keyspace";
 
         let res = storage.get(KEYSPACE, 1).await;

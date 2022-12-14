@@ -167,7 +167,6 @@ impl ReplicationClient {
 impl ReplicationClient {
     /// Fetches the newest version of the node's keyspace timestamps.
     pub async fn poll_keyspace(&mut self) -> Result<KeyspaceTimestamps, Status> {
-        tracing::debug!("polling keyspace");
         let ts = self.clock.get_time().await;
         let inner = self
             .inner
@@ -183,10 +182,8 @@ impl ReplicationClient {
         let mut timestamps = KeyspaceTimestamps::default();
         for (keyspace, ts) in inner.keyspace_timestamps {
             let ts = HLCTimestamp::from(ts);
-            tracing::debug!("inserting timestamp {:#?}", ts);
             timestamps.insert(Cow::Owned(keyspace), Arc::new(AtomicCell::new(ts)));
         }
-        tracing::debug!("finished polling keyspace");
         Ok(timestamps)
     }
 

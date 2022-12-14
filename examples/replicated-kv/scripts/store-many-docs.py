@@ -6,8 +6,11 @@ import string
 
 session = requests.session()
 def load_url(url, timeout):
+    do_delete = random.randint(1, 1000)
     random_name = ''.join(random.sample(string.ascii_lowercase,16))
     r = session.post(url, data="{\"name\": " + f"{random_name}" + "\"}")
+    if do_delete < 175:
+        session.delete(url)
     r.raise_for_status()
     return r.status_code
 
@@ -22,18 +25,19 @@ keyspaces = []
 endpoints = ["http://127.0.0.1:8000", "http://127.0.0.1:8002", "http://127.0.0.1:8004"]
 
 for i in range(20_000):
-    doc_ids.append(random.randint(1, 1000))
+    doc_ids.append(random.randint(1, 1000000000))
 
 for i in range(100):
-    keyspaces.append(''.join(random.sample(string.ascii_lowercase,16)))
+    keyspaces.append(''.join(random.sample(string.ascii_lowercase,5)))
 
 
-for i in range(20_000):
+for i in range(100_000):
     url_to_query = random.choice(endpoints)
     doc_id = random.choice(doc_ids)
     keyspace = random.choice(keyspaces)
-    url = format(f"{url_to_query}/{keyspace}/{doc_id}")
-    urls.append(url)
+    for url_endpoint in endpoints:
+        url = format(f"{url_endpoint}/{keyspace}/{doc_id}")
+        urls.append(url)
 
 print("beginning executor")
 with concurrent.futures.ThreadPoolExecutor(max_workers=CONNECTIONS) as executor:

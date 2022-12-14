@@ -735,7 +735,7 @@ pub mod test_suite {
         );
         assert!(
             res.unwrap().is_none(),
-            "Expected no document to be returned."
+            "{}", format!("Expected no document to be returned for {:#?}.", doc_2)
         );
 
         doc_1.last_updated = clock.send().unwrap();

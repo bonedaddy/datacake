@@ -294,7 +294,6 @@ impl Storage for SledStorage {
         keyspace: &str,
         doc_ids: impl Iterator<Item = Key> + Send,
     ) -> Result<Self::DocsIter, Self::Error> {
-        let doc_ids = doc_ids.map(|doc_id| doc_id as Key).collect::<Vec<_>>();
         let tree = self.db.open_tree(keyspace.as_bytes())?;
         let cache_lock = self.tombstoned_keys.read().await;
         let keyspace_lock = cache_lock.get(keyspace);

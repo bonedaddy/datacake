@@ -29,7 +29,7 @@ impl Document {
     }
     pub fn pack(&self)  -> Vec<u8> {
         let mut buffer = Vec::with_capacity(std::mem::size_of_val(self));
-        buffer.extend_from_slice(&self.id.to_be_bytes()[..]);
+        buffer.extend_from_slice(&self.id.to_le_bytes()[..]);
         buffer.extend_from_slice(&self.last_updated.pack()[..]);
         buffer.extend_from_slice(&self.data);
         buffer
@@ -40,7 +40,7 @@ impl Document {
         let ts = HLCTimestamp::unpack(&buffer[8..8+14]).unwrap();
         let data =bytes::Bytes::from(buffer[8+14..].to_vec());
         Self {
-            id: u64::from_be_bytes(id),
+            id: u64::from_le_bytes(id),
             last_updated: ts,
             data,
         }

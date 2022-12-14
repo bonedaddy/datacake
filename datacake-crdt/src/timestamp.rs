@@ -187,9 +187,9 @@ impl HLCTimestamp {
         let ce = self.counter.to_le_bytes();
         let ne = self.node.to_le_bytes();
         output[0] = me[0];
-        (&mut output[0..8]).copy_from_slice(&me);
-        (&mut output[8..10]).copy_from_slice(&ce);
-        (&mut output[10..14]).copy_from_slice(&ne);
+        output[0..8].copy_from_slice(&me);
+        output[8..10].copy_from_slice(&ce);
+        output[10..14].copy_from_slice(&ne);
         output
     }
     /// unpacks a slize of bytes into an HLCTimestamp object

@@ -19,11 +19,11 @@ pub struct SledStorage {
 
 impl SledStorage {
     pub fn open_temporary() -> anyhow::Result<Self> {
-        Ok(Self::open(
+        Self::open(
             sled::Config::default()
                 .temporary(true)
                 .print_profile_on_drop(true),
-        )?)
+        )
     }
     pub fn open(conf: sled::Config) -> anyhow::Result<Self> {
         let db = conf.open()?;
@@ -39,12 +39,12 @@ impl SledStorage {
         keys: &[Key],
     ) {
         if let Some(cache_lock) = cache_lock.get_mut(keyspace) {
-            keys.into_iter().for_each(|key| {
+            keys.iter().for_each(|key| {
                 cache_lock.insert(*key);
             });
         } else {
             let mut hash_set = HashSet::with_capacity(keys.len());
-            keys.into_iter().for_each(|key| {
+            keys.iter().for_each(|key| {
                 hash_set.insert(*key);
             });
             cache_lock.insert(keyspace.to_string(), hash_set);
@@ -57,11 +57,10 @@ impl SledStorage {
         keys: &[Key],
     ) {
         if let Some(cache_lock) = cache_lock.get_mut(keyspace) {
-            keys.into_iter().for_each(|key| {
-                cache_lock.remove(&key);
+            keys.iter().for_each(|key| {
+                cache_lock.remove(key);
             });
         } else {
-            return;
         }
     }
     pub(crate) fn __is_tombstoned(
@@ -299,34 +298,36 @@ impl Storage for SledStorage {
         let tree = self.db.open_tree(keyspace.as_bytes())?;
         let cache_lock = self.tombstoned_keys.read().await;
         let keyspace_lock = cache_lock.get(keyspace);
-        let docs = doc_ids
-            .into_iter()
-            .filter_map(|doc_id| {
-                if let Some(keyspace_lock) = keyspace_lock {
-                    if keyspace_lock.contains(&doc_id) {
-                        return None;
+        Ok(Box::new(
+            doc_ids
+                .into_iter()
+                .filter_map(|doc_id| {
+                    if let Some(keyspace_lock) = keyspace_lock {
+                        if keyspace_lock.contains(&doc_id) {
+                            return None;
+                        }
                     }
-                }
-                let doc_id = doc_id.to_be_bytes();
-                match tree.get(doc_id) {
-                    Ok(Some(doc)) => {
-                        let sled_doc: SledDocument = doc.into();
-                        let doc: Document = sled_doc.into();
-                        Some(doc)
-                    },
-                    _ => {
-                        log::error!(
-                            "failed to lookup doc_id {}, keyspace {}",
-                            u64::from_be_bytes(doc_id),
-                            keyspace
-                        );
+                    let doc_id = doc_id.to_be_bytes();
+                    match tree.get(doc_id) {
+                        Ok(Some(doc)) => {
+                            let sled_doc: SledDocument = doc.into();
+                            let doc: Document = sled_doc.into();
+                            Some(doc)
+                        },
+                        _ => {
+                            log::error!(
+                                "failed to lookup doc_id {}, keyspace {}",
+                                u64::from_be_bytes(doc_id),
+                                keyspace
+                            );
 
-                        None // todo: handle
-                    },
-                }
-            })
-            .collect::<Vec<_>>();
-        Ok(Box::new(docs.into_iter()))
+                            None // todo: handle
+                        },
+                    }
+                })
+                .collect::<Vec<_>>()
+                .into_iter(),
+        ))
     }
     async fn default_keyspace(&self) -> Option<String> {
         const DEFAULT_SPACE: &str = "__sled__default";
@@ -403,7 +404,7 @@ mod models {
     impl SledDocument {
         pub fn mark_as_tombstone(&mut self, ts: HLCTimestamp) {
             self.data.clear();
-            self.last_updated = ts.into();
+            self.last_updated = ts;
             assert!(self.data.is_empty());
         }
     }

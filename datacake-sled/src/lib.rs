@@ -1,31 +1,23 @@
+//! `datacake-sled` provides an implementation of the Storage trait backed by the sled embedded key-value database.
+//! For every single keyspace two trees are created, one with the keyspace prefixed by `__metadata_` and the other
+//! prefixed by `__data_`, with the former containing all document metadata, and the latter containing the actual
+//! documents.
+//!
+//! Design wise due to the lack of documentation around the requirements for implementing the `Storage` trait, I attempted
+//! to combine the `MemStore` and `SqliteStore` semantics, however there is a bit of funkiness when it comes to handling
+//! items marked as tombstones but not yet deleted, see the corresponding notes in the storage trait definition comments
+
+pub mod utils;
+
 use std::sync::Arc;
-pub mod error;
+
 use anyhow::Result;
 use datacake_cluster::{BulkMutationError, Document, Storage};
 use datacake_crdt::{HLCTimestamp, Key};
 use models::{Metadata, SledDocument};
+use sled::transaction::{ConflictableTransactionError, TransactionError};
 use sled::IVec;
-
-const METADATA_KEYSPACE_PREFIX: &[u8] = b"__metadata_";
-const DATA_KEYSPACE_PREFIX: &[u8] = b"_data_";
-
-/// given a keyspace, format the name for its metadata keyspace
-pub fn metadata_keyspace(keyspace: &[u8]) -> Vec<u8> {
-    const META_LEN: usize = METADATA_KEYSPACE_PREFIX.len();
-    let mut buf = Vec::with_capacity(META_LEN + keyspace.len());
-    buf.extend_from_slice(METADATA_KEYSPACE_PREFIX);
-    buf.extend_from_slice(keyspace);
-    buf
-}
-
-/// given a keyspace, format the name for its data keyspace
-pub fn data_keyspace(keyspace: &[u8]) -> Vec<u8> {
-    const DATA_LEN: usize = DATA_KEYSPACE_PREFIX.len();
-    let mut buf = Vec::with_capacity(DATA_LEN + keyspace.len());
-    buf.extend_from_slice(DATA_KEYSPACE_PREFIX);
-    buf.extend_from_slice(keyspace);
-    buf
-}
+use utils::*;
 
 #[derive(Clone)]
 pub struct SledStorage {
@@ -124,10 +116,23 @@ impl Storage for SledStorage {
             meta_tx.apply_batch(&meta_db_batch)?;
             Ok::<(), ConflictableTransactionError<()>>(())
         }) {
-            return Err(BulkMutationError::new(
-                sled::Error::Unsupported(format!("{:#?}", err)),
-                vec![],
-            ));
+            log::error!("remove_tombstones(keyspace={}) failed {:#?}", keyspace, err);
+            match err {
+                TransactionError::Abort(_) => {
+                    return Err(BulkMutationError::empty_with_error(
+                        sled::Error::Unsupported("transaction aborted".to_string()),
+                    ));
+                },
+                _ => {
+                    return Err(BulkMutationError::new(
+                        sled::Error::Unsupported(format!(
+                            "an unexpected error happened {:#?}",
+                            err
+                        )),
+                        vec![],
+                    ))
+                },
+            }
         }
         Ok(())
     }
@@ -180,10 +185,23 @@ impl Storage for SledStorage {
             data_tx.apply_batch(&data_db_batch)?;
             Ok::<(), ConflictableTransactionError<()>>(())
         }) {
-            log::error!("multiput failed failed {:#?}", err);
-            return Err(BulkMutationError::empty_with_error(
-                sled::Error::Unsupported(format!("{:#?}", err)),
-            ));
+            log::error!("multi_put(keyspace={}) failed {:#?}", keyspace, err);
+            match err {
+                TransactionError::Abort(_) => {
+                    return Err(BulkMutationError::empty_with_error(
+                        sled::Error::Unsupported("transaction aborted".to_string()),
+                    ));
+                },
+                _ => {
+                    return Err(BulkMutationError::new(
+                        sled::Error::Unsupported(format!(
+                            "an unexpected error happened {:#?}",
+                            err
+                        )),
+                        vec![],
+                    ))
+                },
+            }
         };
         Ok(())
     }
@@ -198,7 +216,7 @@ impl Storage for SledStorage {
             .mark_many_as_tombstone(keyspace, [(doc_id, timestamp)].into_iter())
             .await
         {
-            return Err(sled::Error::Unsupported(format!("{:#?}", err)));
+            return Err(err.into_inner());
         }
         Ok(())
     }
@@ -248,6 +266,13 @@ impl Storage for SledStorage {
                     },
                     _ => {
                         // persist the metadata record
+                        // TODO: this is actually unclear on whether or not
+                        //       we should be doing this. the comments of the
+                        //       various traits say this should not be inserted
+                        //       as the key doesnt exist and is a noop.
+                        //
+                        //       the test suite however will fail unless the
+                        //       metadata is present so this suggests something is wrong
                         meta_batch.insert(
                             &doc_key,
                             Metadata {
@@ -263,10 +288,27 @@ impl Storage for SledStorage {
             data_tx.apply_batch(&data_batch)?;
             Ok::<(), ConflictableTransactionError<()>>(())
         }) {
-            log::error!("mark many tombstone failed {:#?}", err);
-            return Err(BulkMutationError::empty_with_error(
-                sled::Error::Unsupported(format!("{:#?}", err)),
-            ));
+            log::error!(
+                "mark_many_as_tombstone(keyspace={}) failed {:#?}",
+                keyspace,
+                err
+            );
+            match err {
+                TransactionError::Abort(_) => {
+                    return Err(BulkMutationError::empty_with_error(
+                        sled::Error::Unsupported("transaction aborted".to_string()),
+                    ));
+                },
+                _ => {
+                    return Err(BulkMutationError::new(
+                        sled::Error::Unsupported(format!(
+                            "an unexpected error happened {:#?}",
+                            err
+                        )),
+                        vec![],
+                    ))
+                },
+            }
         };
         Ok(())
     }
@@ -285,12 +327,7 @@ impl Storage for SledStorage {
                     return Ok(Some(docs[0].clone()));
                 }
             },
-            Err(err) => {
-                return Err(sled::Error::Unsupported(format!(
-                    "failed to get docs {:#?}",
-                    err
-                )))
-            },
+            Err(err) => return Err(err),
         }
     }
 
@@ -321,14 +358,20 @@ impl Storage for SledStorage {
                         },
                         Ok(None) => (),
                         Err(err) => log::error!(
-                            "failed to fetch document id {}: {:#?}",
+                            "failed to fetch document_id(keyspace={}, id={}): {:#?}",
+                            keyspace,
                             doc_id,
                             err
                         ),
                     },
                     Ok(None) => (),
                     Err(err) => {
-                        log::error!("failed to fetch metadata id {}: {:#?}", doc_id, err)
+                        log::error!(
+                            "failed to fetch metadata_id(keyspace={}, id={}): {:#?}",
+                            keyspace,
+                            doc_id,
+                            err
+                        )
                     },
                 }
             });
@@ -336,10 +379,8 @@ impl Storage for SledStorage {
         }) {
             Ok(docs) => Ok(Box::new(docs.into_iter())),
             Err(err) => {
-                return Err(sled::Error::Unsupported(format!(
-                    "failed to get docs {:#?}",
-                    err
-                )))
+                log::error!("multi_get(keyspace={}) failed {:#?}", keyspace, err);
+                return Err(sled::Error::Unsupported(format!("failed to get docs",)));
             },
         }
     }
@@ -362,6 +403,8 @@ mod models {
 
     /// simple mirror of the `Document` type but allowing
     /// for convenient conversion to and rom IVec
+    /// 
+    /// TODO: store the actuald document as an `innner` field
     #[derive(Clone)]
     pub struct SledDocument {
         /// The unique id of the document.

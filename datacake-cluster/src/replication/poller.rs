@@ -386,7 +386,7 @@ async fn begin_keyspace_sync<S>(
 where
     S: Storage + Send + Sync + 'static,
 {
-    let channel = ctx.network.get_or_connect_lazy(target_rpc_addr);
+    let channel = ctx.network.get_or_connect(target_rpc_addr).await?;
     let keyspace = ctx.group.get_or_create_keyspace(&keyspace_name).await;
     let client = ReplicationClient::new(ctx.clock().clone(), channel.clone());
 
@@ -395,7 +395,7 @@ where
         progress: progress_tracker.clone(),
         remote_node_id: Cow::Owned(target_node_id.clone()),
         remote_addr: target_rpc_addr,
-        remote_rpc_channel: channel.clone(),
+        remote_rpc_channel: channel,
     };
 
     // The removal task can operate interdependently of the modified handler.

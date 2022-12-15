@@ -111,10 +111,8 @@ impl Storage for SledStorage {
                     }
                     data_db_batch.remove(&doc_key);
                     meta_db_batch.remove(&doc_key);
-                } else {
-                    if let Ok(Some(_)) = meta_tx.get(doc_key) {
-                        meta_db_batch.remove(&doc_key);
-                    }
+                } else if let Ok(Some(_)) = meta_tx.get(doc_key) {
+                    meta_db_batch.remove(&doc_key);
                 }
             });
             data_tx.apply_batch(&data_db_batch)?;

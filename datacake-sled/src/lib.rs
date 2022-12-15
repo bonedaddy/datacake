@@ -251,7 +251,7 @@ impl Storage for SledStorage {
 
         let documents = documents.collect::<Vec<_>>();
         log::debug!(
-            "putting documents {:?}",
+            "marking as tombstones documents {:?}",
             documents.iter().map(|(id, _)| id).collect::<Vec<_>>()
         );
         if let Err(err) = (&meta_tree, &data_tree).transaction(|(meta_tx, data_tx)| {

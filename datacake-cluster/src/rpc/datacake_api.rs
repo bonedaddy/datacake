@@ -75,10 +75,8 @@ pub struct KeyspaceInfo {
     pub timestamp: ::core::option::Option<Timestamp>,
     /// A mapping of a given keyspace and the timestamp of when it was last updated.
     #[prost(map = "string, message", tag = "2")]
-    pub keyspace_timestamps: ::std::collections::HashMap<
-        ::prost::alloc::string::String,
-        Timestamp,
-    >,
+    pub keyspace_timestamps:
+        ::std::collections::HashMap<::prost::alloc::string::String, Timestamp>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -158,8 +156,8 @@ pub struct DocumentMetadata {
 /// Generated client implementations.
 pub mod chitchat_transport_client {
     #![allow(unused_variables, dead_code, missing_docs, clippy::let_unit_value)]
-    use tonic::codegen::*;
     use tonic::codegen::http::Uri;
+    use tonic::codegen::*;
     #[derive(Debug, Clone)]
     pub struct ChitchatTransportClient<T> {
         inner: tonic::client::Grpc<T>,
@@ -228,15 +226,12 @@ pub mod chitchat_transport_client {
             &mut self,
             request: impl tonic::IntoRequest<super::ChitchatRpcMessage>,
         ) -> Result<tonic::Response<super::Empty>, tonic::Status> {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::new(
-                        tonic::Code::Unknown,
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::new(
+                    tonic::Code::Unknown,
+                    format!("Service was not ready: {}", e.into()),
+                )
+            })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/datacake_api.ChitchatTransport/send_msg",
@@ -248,8 +243,8 @@ pub mod chitchat_transport_client {
 /// Generated client implementations.
 pub mod consistency_api_client {
     #![allow(unused_variables, dead_code, missing_docs, clippy::let_unit_value)]
-    use tonic::codegen::*;
     use tonic::codegen::http::Uri;
+    use tonic::codegen::*;
     #[derive(Debug, Clone)]
     pub struct ConsistencyApiClient<T> {
         inner: tonic::client::Grpc<T>,
@@ -319,19 +314,15 @@ pub mod consistency_api_client {
             &mut self,
             request: impl tonic::IntoRequest<super::PutPayload>,
         ) -> Result<tonic::Response<super::Timestamp>, tonic::Status> {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::new(
-                        tonic::Code::Unknown,
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::new(
+                    tonic::Code::Unknown,
+                    format!("Service was not ready: {}", e.into()),
+                )
+            })?;
             let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/datacake_api.ConsistencyApi/put",
-            );
+            let path =
+                http::uri::PathAndQuery::from_static("/datacake_api.ConsistencyApi/put");
             self.inner.unary(request.into_request(), path, codec).await
         }
         /// Adds a set of documents to the state.
@@ -339,15 +330,12 @@ pub mod consistency_api_client {
             &mut self,
             request: impl tonic::IntoRequest<super::MultiPutPayload>,
         ) -> Result<tonic::Response<super::Timestamp>, tonic::Status> {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::new(
-                        tonic::Code::Unknown,
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::new(
+                    tonic::Code::Unknown,
+                    format!("Service was not ready: {}", e.into()),
+                )
+            })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/datacake_api.ConsistencyApi/multi_put",
@@ -359,15 +347,12 @@ pub mod consistency_api_client {
             &mut self,
             request: impl tonic::IntoRequest<super::RemovePayload>,
         ) -> Result<tonic::Response<super::Timestamp>, tonic::Status> {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::new(
-                        tonic::Code::Unknown,
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::new(
+                    tonic::Code::Unknown,
+                    format!("Service was not ready: {}", e.into()),
+                )
+            })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/datacake_api.ConsistencyApi/remove",
@@ -379,15 +364,12 @@ pub mod consistency_api_client {
             &mut self,
             request: impl tonic::IntoRequest<super::MultiRemovePayload>,
         ) -> Result<tonic::Response<super::Timestamp>, tonic::Status> {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::new(
-                        tonic::Code::Unknown,
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::new(
+                    tonic::Code::Unknown,
+                    format!("Service was not ready: {}", e.into()),
+                )
+            })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/datacake_api.ConsistencyApi/multi_remove",
@@ -399,15 +381,12 @@ pub mod consistency_api_client {
             &mut self,
             request: impl tonic::IntoRequest<super::BatchPayload>,
         ) -> Result<tonic::Response<super::Timestamp>, tonic::Status> {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::new(
-                        tonic::Code::Unknown,
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::new(
+                    tonic::Code::Unknown,
+                    format!("Service was not ready: {}", e.into()),
+                )
+            })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/datacake_api.ConsistencyApi/apply_batch",
@@ -419,8 +398,8 @@ pub mod consistency_api_client {
 /// Generated client implementations.
 pub mod replication_api_client {
     #![allow(unused_variables, dead_code, missing_docs, clippy::let_unit_value)]
-    use tonic::codegen::*;
     use tonic::codegen::http::Uri;
+    use tonic::codegen::*;
     #[derive(Debug, Clone)]
     pub struct ReplicationApiClient<T> {
         inner: tonic::client::Grpc<T>,
@@ -490,15 +469,12 @@ pub mod replication_api_client {
             &mut self,
             request: impl tonic::IntoRequest<super::PollPayload>,
         ) -> Result<tonic::Response<super::KeyspaceInfo>, tonic::Status> {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::new(
-                        tonic::Code::Unknown,
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::new(
+                    tonic::Code::Unknown,
+                    format!("Service was not ready: {}", e.into()),
+                )
+            })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/datacake_api.ReplicationApi/poll_keyspace",
@@ -510,15 +486,12 @@ pub mod replication_api_client {
             &mut self,
             request: impl tonic::IntoRequest<super::GetState>,
         ) -> Result<tonic::Response<super::KeyspaceOrSwotSet>, tonic::Status> {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::new(
-                        tonic::Code::Unknown,
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::new(
+                    tonic::Code::Unknown,
+                    format!("Service was not ready: {}", e.into()),
+                )
+            })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/datacake_api.ReplicationApi/get_state",
@@ -530,15 +503,12 @@ pub mod replication_api_client {
             &mut self,
             request: impl tonic::IntoRequest<super::FetchDocs>,
         ) -> Result<tonic::Response<super::FetchedDocs>, tonic::Status> {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::new(
-                        tonic::Code::Unknown,
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::new(
+                    tonic::Code::Unknown,
+                    format!("Service was not ready: {}", e.into()),
+                )
+            })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/datacake_api.ReplicationApi/fetch_docs",
@@ -621,15 +591,13 @@ pub mod chitchat_transport_server {
                 "/datacake_api.ChitchatTransport/send_msg" => {
                     #[allow(non_camel_case_types)]
                     struct send_msgSvc<T: ChitchatTransport>(pub Arc<T>);
-                    impl<
-                        T: ChitchatTransport,
-                    > tonic::server::UnaryService<super::ChitchatRpcMessage>
-                    for send_msgSvc<T> {
+                    impl<T: ChitchatTransport>
+                        tonic::server::UnaryService<super::ChitchatRpcMessage>
+                        for send_msgSvc<T>
+                    {
                         type Response = super::Empty;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
+                        type Future =
+                            BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::ChitchatRpcMessage>,
@@ -655,19 +623,15 @@ pub mod chitchat_transport_server {
                         Ok(res)
                     };
                     Box::pin(fut)
-                }
-                _ => {
-                    Box::pin(async move {
-                        Ok(
-                            http::Response::builder()
-                                .status(200)
-                                .header("grpc-status", "12")
-                                .header("content-type", "application/grpc")
-                                .body(empty_body())
-                                .unwrap(),
-                        )
-                    })
-                }
+                },
+                _ => Box::pin(async move {
+                    Ok(http::Response::builder()
+                        .status(200)
+                        .header("grpc-status", "12")
+                        .header("content-type", "application/grpc")
+                        .body(empty_body())
+                        .unwrap())
+                }),
             }
         }
     }
@@ -691,8 +655,7 @@ pub mod chitchat_transport_server {
             write!(f, "{:?}", self.0)
         }
     }
-    impl<T: ChitchatTransport> tonic::server::NamedService
-    for ChitchatTransportServer<T> {
+    impl<T: ChitchatTransport> tonic::server::NamedService for ChitchatTransportServer<T> {
         const NAME: &'static str = "datacake_api.ChitchatTransport";
     }
 }
@@ -791,14 +754,12 @@ pub mod consistency_api_server {
                 "/datacake_api.ConsistencyApi/put" => {
                     #[allow(non_camel_case_types)]
                     struct putSvc<T: ConsistencyApi>(pub Arc<T>);
-                    impl<
-                        T: ConsistencyApi,
-                    > tonic::server::UnaryService<super::PutPayload> for putSvc<T> {
+                    impl<T: ConsistencyApi>
+                        tonic::server::UnaryService<super::PutPayload> for putSvc<T>
+                    {
                         type Response = super::Timestamp;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
+                        type Future =
+                            BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::PutPayload>,
@@ -824,19 +785,17 @@ pub mod consistency_api_server {
                         Ok(res)
                     };
                     Box::pin(fut)
-                }
+                },
                 "/datacake_api.ConsistencyApi/multi_put" => {
                     #[allow(non_camel_case_types)]
                     struct multi_putSvc<T: ConsistencyApi>(pub Arc<T>);
-                    impl<
-                        T: ConsistencyApi,
-                    > tonic::server::UnaryService<super::MultiPutPayload>
-                    for multi_putSvc<T> {
+                    impl<T: ConsistencyApi>
+                        tonic::server::UnaryService<super::MultiPutPayload>
+                        for multi_putSvc<T>
+                    {
                         type Response = super::Timestamp;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
+                        type Future =
+                            BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::MultiPutPayload>,
@@ -862,19 +821,17 @@ pub mod consistency_api_server {
                         Ok(res)
                     };
                     Box::pin(fut)
-                }
+                },
                 "/datacake_api.ConsistencyApi/remove" => {
                     #[allow(non_camel_case_types)]
                     struct removeSvc<T: ConsistencyApi>(pub Arc<T>);
-                    impl<
-                        T: ConsistencyApi,
-                    > tonic::server::UnaryService<super::RemovePayload>
-                    for removeSvc<T> {
+                    impl<T: ConsistencyApi>
+                        tonic::server::UnaryService<super::RemovePayload>
+                        for removeSvc<T>
+                    {
                         type Response = super::Timestamp;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
+                        type Future =
+                            BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::RemovePayload>,
@@ -900,27 +857,24 @@ pub mod consistency_api_server {
                         Ok(res)
                     };
                     Box::pin(fut)
-                }
+                },
                 "/datacake_api.ConsistencyApi/multi_remove" => {
                     #[allow(non_camel_case_types)]
                     struct multi_removeSvc<T: ConsistencyApi>(pub Arc<T>);
-                    impl<
-                        T: ConsistencyApi,
-                    > tonic::server::UnaryService<super::MultiRemovePayload>
-                    for multi_removeSvc<T> {
+                    impl<T: ConsistencyApi>
+                        tonic::server::UnaryService<super::MultiRemovePayload>
+                        for multi_removeSvc<T>
+                    {
                         type Response = super::Timestamp;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
+                        type Future =
+                            BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::MultiRemovePayload>,
                         ) -> Self::Future {
                             let inner = self.0.clone();
-                            let fut = async move {
-                                (*inner).multi_remove(request).await
-                            };
+                            let fut =
+                                async move { (*inner).multi_remove(request).await };
                             Box::pin(fut)
                         }
                     }
@@ -940,19 +894,17 @@ pub mod consistency_api_server {
                         Ok(res)
                     };
                     Box::pin(fut)
-                }
+                },
                 "/datacake_api.ConsistencyApi/apply_batch" => {
                     #[allow(non_camel_case_types)]
                     struct apply_batchSvc<T: ConsistencyApi>(pub Arc<T>);
-                    impl<
-                        T: ConsistencyApi,
-                    > tonic::server::UnaryService<super::BatchPayload>
-                    for apply_batchSvc<T> {
+                    impl<T: ConsistencyApi>
+                        tonic::server::UnaryService<super::BatchPayload>
+                        for apply_batchSvc<T>
+                    {
                         type Response = super::Timestamp;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
+                        type Future =
+                            BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::BatchPayload>,
@@ -978,19 +930,15 @@ pub mod consistency_api_server {
                         Ok(res)
                     };
                     Box::pin(fut)
-                }
-                _ => {
-                    Box::pin(async move {
-                        Ok(
-                            http::Response::builder()
-                                .status(200)
-                                .header("grpc-status", "12")
-                                .header("content-type", "application/grpc")
-                                .body(empty_body())
-                                .unwrap(),
-                        )
-                    })
-                }
+                },
+                _ => Box::pin(async move {
+                    Ok(http::Response::builder()
+                        .status(200)
+                        .header("grpc-status", "12")
+                        .header("content-type", "application/grpc")
+                        .body(empty_body())
+                        .unwrap())
+                }),
             }
         }
     }
@@ -1103,23 +1051,20 @@ pub mod replication_api_server {
                 "/datacake_api.ReplicationApi/poll_keyspace" => {
                     #[allow(non_camel_case_types)]
                     struct poll_keyspaceSvc<T: ReplicationApi>(pub Arc<T>);
-                    impl<
-                        T: ReplicationApi,
-                    > tonic::server::UnaryService<super::PollPayload>
-                    for poll_keyspaceSvc<T> {
+                    impl<T: ReplicationApi>
+                        tonic::server::UnaryService<super::PollPayload>
+                        for poll_keyspaceSvc<T>
+                    {
                         type Response = super::KeyspaceInfo;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
+                        type Future =
+                            BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::PollPayload>,
                         ) -> Self::Future {
                             let inner = self.0.clone();
-                            let fut = async move {
-                                (*inner).poll_keyspace(request).await
-                            };
+                            let fut =
+                                async move { (*inner).poll_keyspace(request).await };
                             Box::pin(fut)
                         }
                     }
@@ -1139,17 +1084,16 @@ pub mod replication_api_server {
                         Ok(res)
                     };
                     Box::pin(fut)
-                }
+                },
                 "/datacake_api.ReplicationApi/get_state" => {
                     #[allow(non_camel_case_types)]
                     struct get_stateSvc<T: ReplicationApi>(pub Arc<T>);
                     impl<T: ReplicationApi> tonic::server::UnaryService<super::GetState>
-                    for get_stateSvc<T> {
+                        for get_stateSvc<T>
+                    {
                         type Response = super::KeyspaceOrSwotSet;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
+                        type Future =
+                            BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::GetState>,
@@ -1175,17 +1119,16 @@ pub mod replication_api_server {
                         Ok(res)
                     };
                     Box::pin(fut)
-                }
+                },
                 "/datacake_api.ReplicationApi/fetch_docs" => {
                     #[allow(non_camel_case_types)]
                     struct fetch_docsSvc<T: ReplicationApi>(pub Arc<T>);
                     impl<T: ReplicationApi> tonic::server::UnaryService<super::FetchDocs>
-                    for fetch_docsSvc<T> {
+                        for fetch_docsSvc<T>
+                    {
                         type Response = super::FetchedDocs;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
+                        type Future =
+                            BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::FetchDocs>,
@@ -1211,19 +1154,15 @@ pub mod replication_api_server {
                         Ok(res)
                     };
                     Box::pin(fut)
-                }
-                _ => {
-                    Box::pin(async move {
-                        Ok(
-                            http::Response::builder()
-                                .status(200)
-                                .header("grpc-status", "12")
-                                .header("content-type", "application/grpc")
-                                .body(empty_body())
-                                .unwrap(),
-                        )
-                    })
-                }
+                },
+                _ => Box::pin(async move {
+                    Ok(http::Response::builder()
+                        .status(200)
+                        .header("grpc-status", "12")
+                        .header("content-type", "application/grpc")
+                        .body(empty_body())
+                        .unwrap())
+                }),
             }
         }
     }

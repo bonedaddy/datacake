@@ -15,7 +15,7 @@ use anyhow::Result;
 use datacake_cluster::{BulkMutationError, Document, Storage};
 use datacake_crdt::{HLCTimestamp, Key};
 use models::{Metadata, SledDocument};
-use sled::transaction::{ConflictableTransactionError, TransactionError};
+use sled::transaction::TransactionError;
 use sled::IVec;
 use utils::*;
 
@@ -380,7 +380,7 @@ impl Storage for SledStorage {
             Ok(docs) => Ok(Box::new(docs.into_iter())),
             Err(err) => {
                 log::error!("multi_get(keyspace={}) failed {:#?}", keyspace, err);
-                return Err(sled::Error::Unsupported(format!("failed to get docs",)));
+                return Err(sled::Error::Unsupported("failed to get docs".to_string()));
             },
         }
     }
@@ -403,7 +403,7 @@ mod models {
 
     /// simple mirror of the `Document` type but allowing
     /// for convenient conversion to and rom IVec
-    /// 
+    ///
     /// TODO: store the actuald document as an `innner` field
     #[derive(Clone)]
     pub struct SledDocument {

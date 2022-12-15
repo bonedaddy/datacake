@@ -172,7 +172,10 @@ impl Storage for SledStorage {
             .open_tree(data_keyspace)
             .map_err(BulkMutationError::empty_with_error)?;
         let documents = documents.collect::<Vec<_>>();
-        log::debug!("putting documents {:?}", documents.iter().map(|doc| doc.id).collect::<Vec<_>>());
+        log::debug!(
+            "putting documents {:?}",
+            documents.iter().map(|doc| doc.id).collect::<Vec<_>>()
+        );
         if let Err(err) = (&meta_tree, &data_tree).transaction(|(meta_tx, data_tx)| {
             let mut meta_db_batch = sled::Batch::default();
             let mut data_db_batch = sled::Batch::default();
@@ -252,7 +255,10 @@ impl Storage for SledStorage {
             .map_err(BulkMutationError::empty_with_error)?;
 
         let documents = documents.collect::<Vec<_>>();
-        log::debug!("putting documents {:?}", documents.iter().map(|(id, _)| id).collect::<Vec<_>>());
+        log::debug!(
+            "putting documents {:?}",
+            documents.iter().map(|(id, _)| id).collect::<Vec<_>>()
+        );
         if let Err(err) = (&meta_tree, &data_tree).transaction(|(meta_tx, data_tx)| {
             let mut meta_batch = sled::Batch::default();
             let mut data_batch = sled::Batch::default();
@@ -421,7 +427,7 @@ mod models {
     #[derive(Clone)]
     pub struct SledDocument {
         pub inner: Document,
-        pub tombstoned: bool
+        pub tombstoned: bool,
     }
 
     impl SledDocument {
@@ -474,10 +480,10 @@ mod models {
             // this is because the sled datastore adds additional metadata
             // to the document which is not used by the rest of datacake
             // therefore the buffer needs to strip the remaining contents
-            let doc = Document::unpack(&v[0..v.len()-SLED_DOCUMENT_METADATA_SIZE]);
+            let doc = Document::unpack(&v[0..v.len() - SLED_DOCUMENT_METADATA_SIZE]);
             Self {
                 inner: doc,
-                tombstoned: v[v.len()-SLED_DOCUMENT_METADATA_SIZE] == 1
+                tombstoned: v[v.len() - SLED_DOCUMENT_METADATA_SIZE] == 1,
             }
         }
     }

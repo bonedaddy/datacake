@@ -24,7 +24,8 @@ async fn test_basic_sled_cluster() -> Result<()> {
     let connection_cfg_1 = ConnectionConfig::new(addr_1, addr_1, Vec::<String>::new());
 
     let addr_2 = "127.0.0.1:9001".parse::<SocketAddr>().unwrap();
-    let connection_cfg_2 = ConnectionConfig::new(addr_2, addr_2, vec!["127.0.0.1:9000".to_string()]);
+    let connection_cfg_2 =
+        ConnectionConfig::new(addr_2, addr_2, vec!["127.0.0.1:9000".to_string()]);
 
     let cluster_1 = DatacakeCluster::connect(
         "node-1",
@@ -50,11 +51,14 @@ async fn test_basic_sled_cluster() -> Result<()> {
     let handle_2 = cluster_2.handle();
 
     handle_1
-        .put(KEYSPACE, 1, b"Hello, world".to_vec(), Consistency::EachQuorum)
+        .put(
+            KEYSPACE,
+            1,
+            b"Hello, world".to_vec(),
+            Consistency::EachQuorum,
+        )
         .await
         .expect("Put value.");
-
-    
 
     let doc = handle_1
         .get(KEYSPACE, 1)
@@ -71,7 +75,6 @@ async fn test_basic_sled_cluster() -> Result<()> {
         .expect("Document should not be none");
     assert_eq!(doc.id, 1);
     assert_eq!(doc.data.as_ref(), b"Hello, world");
-
 
     handle_2
         .del(KEYSPACE, 1, Consistency::EachQuorum)

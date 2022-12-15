@@ -68,9 +68,9 @@ impl Storage for SledStorage {
     ) -> Result<Self::MetadataIter, Self::Error> {
         let tree_key = metadata_keyspace(keyspace.as_bytes());
         let tree = self.db.open_tree(tree_key)?;
-        let list = tree.into_iter().flatten().filter_map(|(_, value)| {
+        let list = tree.into_iter().flatten().map(|(_, value)| {
             let doc: Metadata = value.into();
-            Some((doc.id, doc.last_updated, doc.tombstoned))
+            (doc.id, doc.last_updated, doc.tombstoned)
         });
         Ok(Box::new(list))
     }
@@ -112,11 +112,8 @@ impl Storage for SledStorage {
                     data_db_batch.remove(&doc_key);
                     meta_db_batch.remove(&doc_key);
                 } else {
-                    match meta_tx.get(doc_key) {
-                        Ok(Some(_)) => {
-                            meta_db_batch.remove(&doc_key);
-                        },
-                        _ => (),
+                    if let Ok(Some(_)) = meta_tx.get(doc_key) {
+                        meta_db_batch.remove(&doc_key);
                     }
                 }
             });

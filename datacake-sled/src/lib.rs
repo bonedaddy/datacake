@@ -111,6 +111,13 @@ impl Storage for SledStorage {
                     }
                     data_db_batch.remove(&doc_key);
                     meta_db_batch.remove(&doc_key);
+                } else {
+                    match meta_tx.get(doc_key) {
+                        Ok(Some(_)) => {
+                            meta_db_batch.remove(&doc_key);
+                        },
+                        _ => (),
+                    }
                 }
             });
             data_tx.apply_batch(&data_db_batch)?;
@@ -171,7 +178,7 @@ impl Storage for SledStorage {
             let mut data_db_batch = sled::Batch::default();
 
             documents.iter().for_each(|doc| {
-                let sled_doc: SledDocument = doc.clone().into();
+                let sled_doc = SledDocument::new(doc.clone());
                 let sled_data: IVec = sled_doc.into();
                 data_db_batch.insert(&doc.id.to_be_bytes(), sled_data);
                 meta_db_batch.insert(
@@ -262,7 +269,7 @@ impl Storage for SledStorage {
                                 meta_doc.tombstoned = true;
                                 meta_doc.last_updated = *ts;
                                 meta_batch.insert(&doc_key, meta_doc);
-                                data_batch.insert(&doc_key, sled_doc);
+                                data_batch.remove(&doc_key);
                             },
                             _ => continue,
                         }
@@ -395,6 +402,9 @@ mod models {
     use sled::IVec;
 
     pub struct SledKey(pub Key);
+    /// the size in bytes that the datastore adds to the document
+    /// which is not used by the rest of datacake
+    pub const SLED_DOCUMENT_METADATA_SIZE: usize = 1;
 
     impl From<&IVec> for SledKey {
         fn from(s: &IVec) -> Self {
@@ -410,19 +420,20 @@ mod models {
     /// TODO: store the actuald document as an `innner` field
     #[derive(Clone)]
     pub struct SledDocument {
-        /// The unique id of the document.
-        pub id: Key,
-
-        /// The timestamp of when the document was last updated.
-        pub last_updated: HLCTimestamp,
-
-        /// The raw binary data of the document's value.
-        pub data: bytes::Bytes,
+        pub inner: Document,
+        pub tombstoned: bool
     }
 
     impl SledDocument {
         pub fn set_as_tombstone(&mut self) {
-            self.data.clear();
+            self.inner.data.clear();
+            self.tombstoned = true;
+        }
+        pub fn new(doc: Document) -> Self {
+            Self {
+                inner: doc,
+                tombstoned: false,
+            }
         }
     }
 
@@ -435,41 +446,39 @@ mod models {
 
         pub tombstoned: bool,
     }
-
-    impl From<Document> for SledDocument {
-        fn from(d: Document) -> Self {
-            Self {
-                id: d.id,
-                last_updated: d.last_updated,
-                data: d.data,
-            }
-        }
-    }
-
     impl From<SledDocument> for Document {
         fn from(sd: SledDocument) -> Self {
             Self {
-                id: sd.id,
-                last_updated: sd.last_updated,
-                data: sd.data,
+                id: sd.inner.id,
+                last_updated: sd.inner.last_updated,
+                data: sd.inner.data,
             }
         }
     }
 
     impl From<SledDocument> for sled::IVec {
         fn from(sd: SledDocument) -> Self {
-            let mut buffer = Vec::with_capacity(std::mem::size_of_val(&sd));
-            buffer.extend_from_slice(&sd.id.to_le_bytes()[..]);
-            buffer.extend_from_slice(&sd.last_updated.pack()[..]);
-            buffer.extend_from_slice(&sd.data);
+            let mut buffer = sd.inner.pack();
+            if sd.tombstoned {
+                buffer.push(1);
+            } else {
+                buffer.push(0);
+            }
             Self::from(buffer)
         }
     }
 
     impl From<sled::IVec> for SledDocument {
         fn from(v: sled::IVec) -> Self {
-            let doc = Document::unpack(&v);
-            doc.into()
+            // we need to provide all but the last remaining bytes
+            // this is because the sled datastore adds additional metadata
+            // to the document which is not used by the rest of datacake
+            // therefore the buffer needs to strip the remaining contents
+            let doc = Document::unpack(&v[0..v.len()-SLED_DOCUMENT_METADATA_SIZE]);
+            Self {
+                inner: doc,
+                tombstoned: v[v.len()-SLED_DOCUMENT_METADATA_SIZE] == 1
+            }
         }
     }
 
@@ -495,7 +504,7 @@ mod models {
             Self {
                 id: u64::from_le_bytes(id),
                 last_updated: ts,
-                tombstoned: buffer[8 + 14] != 0,
+                tombstoned: buffer[8 + 14] == 1,
             }
         }
     }

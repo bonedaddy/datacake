@@ -87,6 +87,7 @@ impl Storage for SledStorage {
         let data_tree_key = data_keyspace(keyspace_bytes);
 
         let keys = keys.collect::<Vec<_>>();
+        log::debug!("removing tombstones {:?}", keys);
         let meta_tree = self
             .db
             .open_tree(meta_tree_key)
@@ -164,6 +165,7 @@ impl Storage for SledStorage {
             .open_tree(data_keyspace)
             .map_err(BulkMutationError::empty_with_error)?;
         let documents = documents.collect::<Vec<_>>();
+        log::debug!("putting documents {:?}", documents.iter().map(|doc| doc.id).collect::<Vec<_>>());
         if let Err(err) = (&meta_tree, &data_tree).transaction(|(meta_tx, data_tx)| {
             let mut meta_db_batch = sled::Batch::default();
             let mut data_db_batch = sled::Batch::default();
@@ -243,6 +245,7 @@ impl Storage for SledStorage {
             .map_err(BulkMutationError::empty_with_error)?;
 
         let documents = documents.collect::<Vec<_>>();
+        log::debug!("putting documents {:?}", documents.iter().map(|(id, _)| id).collect::<Vec<_>>());
         if let Err(err) = (&meta_tree, &data_tree).transaction(|(meta_tx, data_tx)| {
             let mut meta_batch = sled::Batch::default();
             let mut data_batch = sled::Batch::default();

@@ -12,8 +12,9 @@ use datacake_sled::SledStorage;
 
 static KEYSPACE: &str = "sqlite-store";
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn test_basic_sled_cluster() -> Result<()> {
+    std::env::set_var("RUST_LOG", "debug");
     let _ = tracing_subscriber::fmt::try_init();
 
     let store = SledStorage::open_temporary()?;
@@ -33,7 +34,7 @@ async fn test_basic_sled_cluster() -> Result<()> {
     let handle = cluster.handle();
 
     handle
-        .put(KEYSPACE, 1, b"Hello, world".to_vec(), Consistency::All)
+        .put(KEYSPACE, 1, b"Hello, world".to_vec(), Consistency::EachQuorum)
         .await
         .expect("Put value.");
 
@@ -44,16 +45,19 @@ async fn test_basic_sled_cluster() -> Result<()> {
         .expect("Document should not be none");
     assert_eq!(doc.id, 1);
     assert_eq!(doc.data.as_ref(), b"Hello, world");
-
+    log::info!("deleting key");
     handle
-        .del(KEYSPACE, 1, Consistency::All)
+        .del(KEYSPACE, 1, Consistency::EachQuorum)
         .await
         .expect("Del value.");
+    log::info!("getting key");
+    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
     let doc = handle.get(KEYSPACE, 1).await.expect("Get value.");
+    log::info!("got doc {:#?}", doc);
     assert!(doc.is_none(), "No document should not exist!");
 
     handle
-        .del(KEYSPACE, 2, Consistency::All)
+        .del(KEYSPACE, 2, Consistency::EachQuorum)
         .await
         .expect("Del value which doesnt exist locally.");
     let doc = handle.get(KEYSPACE, 2).await.expect("Get value.");

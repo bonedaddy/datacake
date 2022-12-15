@@ -346,9 +346,6 @@ pub trait Storage {
         keyspace: &str,
         doc_ids: impl Iterator<Item = Key> + Send,
     ) -> Result<Self::DocsIter, Self::Error>;
-    /// some storage backends, such as sled have a default keyspace
-    /// which needs to be taken into consideration for tests
-    async fn default_keyspace(&self) -> Option<String>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]

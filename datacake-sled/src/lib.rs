@@ -343,9 +343,6 @@ impl Storage for SledStorage {
             },
         }
     }
-    async fn default_keyspace(&self) -> Option<String> {
-        None
-    }
 }
 
 mod models {

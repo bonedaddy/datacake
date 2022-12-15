@@ -128,9 +128,6 @@ impl<S: Storage + Send + Sync + 'static> Storage for InstrumentedStorage<S> {
         info!(keyspace = keyspace, doc_ids = ?doc_ids, "multi_get");
         self.0.multi_get(keyspace, doc_ids.into_iter()).await
     }
-    async fn default_keyspace(&self) -> Option<String> {
-        None
-    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -394,9 +391,6 @@ impl Storage for MockStorage {
         }
         panic!("multi_get operation was not expected to be called.");
     }
-    async fn default_keyspace(&self) -> Option<String> {
-        None
-    }
 }
 
 #[derive(Debug, Default)]
@@ -561,9 +555,5 @@ impl Storage for MemStore {
         }
 
         Ok(docs.into_iter())
-    }
-
-    async fn default_keyspace(&self) -> Option<String> {
-        None
     }
 }

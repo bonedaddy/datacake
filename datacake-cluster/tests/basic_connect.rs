@@ -15,9 +15,9 @@ async fn test_basic_connect() -> anyhow::Result<()> {
 
     let addr = "127.0.0.1:8000".parse::<SocketAddr>().unwrap();
     let connection_cfg = ConnectionConfig::new(addr, addr, Vec::<String>::new());
-
+    let node_id = age::x25519::Identity::generate();
     let cluster = DatacakeCluster::connect(
-        "node-1",
+        node_id,
         connection_cfg,
         MemStore::default(),
         DCAwareSelector::default(),

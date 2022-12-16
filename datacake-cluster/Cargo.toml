@@ -37,6 +37,9 @@ rkyv = { version = "0.7.9", features = ["validation"] }
 
 datacake-crdt = { path = "../datacake-crdt", version = "0.3", features = ["rkyv-support"] }
 
+age = "0.9"
+
+
 [features]
 test-utils = []
 

@@ -1,6 +1,7 @@
 use std::error::Error;
 use std::fmt::Debug;
 use std::net::SocketAddr;
+use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -31,6 +32,8 @@ const GOSSIP_INTERVAL: Duration = if cfg!(test) {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClusterMember {
     /// A unique ID for the given node in the cluster.
+    /// 
+    /// this is the node's age public key
     pub node_id: String,
     /// The public address of the nod.
     pub public_addr: SocketAddr,
@@ -42,12 +45,12 @@ pub struct ClusterMember {
 
 impl ClusterMember {
     pub fn new(
-        node_id: String,
+        node_id: age::x25519::Recipient,
         public_addr: SocketAddr,
         data_center: impl Into<String>,
     ) -> Self {
         Self {
-            node_id,
+            node_id: node_id.to_string(),
             public_addr,
             data_center: data_center.into(),
         }
@@ -245,7 +248,7 @@ fn build_cluster_member<'a>(
         .unwrap_or(DEFAULT_DATA_CENTER);
 
     Ok(ClusterMember::new(
-        node_id.id.to_string(),
+        age::x25519::Recipient::from_str(&node_id.id.to_string())?,
         node_id.gossip_public_address,
         data_center,
     ))
@@ -265,7 +268,7 @@ mod tests {
         let _ = tracing_subscriber::fmt::try_init();
 
         let transport = ChannelTransport::default();
-        let cluster = create_node_for_test(Vec::new(), &transport).await?;
+        let cluster = create_node_for_test(age::x25519::Identity::generate(), Vec::new(), &transport).await?;
 
         let members: Vec<SocketAddr> = cluster
             .members()
@@ -283,11 +286,11 @@ mod tests {
         let _ = tracing_subscriber::fmt::try_init();
 
         let transport = ChannelTransport::default();
-        let node1 = create_node_for_test(Vec::new(), &transport).await?;
+        let node1 = create_node_for_test(age::x25519::Identity::generate(), Vec::new(), &transport).await?;
         let node_1_gossip_addr = node1.public_addr.to_string();
         let node2 =
-            create_node_for_test(vec![node_1_gossip_addr.clone()], &transport).await?;
-        let node3 = create_node_for_test(vec![node_1_gossip_addr], &transport).await?;
+            create_node_for_test(age::x25519::Identity::generate(), vec![node_1_gossip_addr.clone()], &transport).await?;
+        let node3 = create_node_for_test(age::x25519::Identity::generate(), vec![node_1_gossip_addr], &transport).await?;
 
         let wait_secs = Duration::from_secs(30);
         for cluster in [&node1, &node2, &node3] {
@@ -317,16 +320,16 @@ mod tests {
     pub struct TestError(#[from] pub anyhow::Error);
 
     pub async fn create_node_for_test_with_id(
-        node_id: u16,
+        node_id: age::x25519::Identity,
+        port: u16,
         cluster_id: String,
         seeds: Vec<String>,
         transport: &dyn Transport,
     ) -> Result<DatacakeNode> {
-        let public_addr: SocketAddr = ([127, 0, 0, 1], node_id).into();
-        let node_id = format!("node_{node_id}");
+        let public_addr: SocketAddr = ([127, 0, 0, 1], port).into();
         let failure_detector_config = create_failure_detector_config_for_test();
         let node = DatacakeNode::connect::<TestError>(
-            ClusterMember::new(node_id, public_addr, DATA_CENTER_KEY),
+            ClusterMember::new(node_id.to_public(), public_addr, DATA_CENTER_KEY),
             public_addr,
             cluster_id,
             seeds,
@@ -339,13 +342,15 @@ mod tests {
     }
 
     pub async fn create_node_for_test(
+        node_id: age::x25519::Identity,
         seeds: Vec<String>,
         transport: &dyn Transport,
     ) -> Result<DatacakeNode> {
         static NODE_AUTO_INCREMENT: AtomicU16 = AtomicU16::new(1u16);
-        let node_id = NODE_AUTO_INCREMENT.fetch_add(1, Ordering::Relaxed);
+        let port = NODE_AUTO_INCREMENT.fetch_add(1, Ordering::Relaxed);
         let node = create_node_for_test_with_id(
             node_id,
+            port,
             "test-cluster".to_string(),
             seeds,
             transport,
@@ -354,3 +359,5 @@ mod tests {
         Ok(node)
     }
 }
+
+

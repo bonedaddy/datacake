@@ -199,7 +199,7 @@ where
     /// but they are required in order for nodes to discover one-another and share
     /// their basic state.
     pub async fn connect<DS>(
-        node_id: impl Into<String>,
+        node_id: age::x25519::Identity,
         connection_cfg: ConnectionConfig,
         datastore: S,
         node_selector: DS,
@@ -236,7 +236,7 @@ where
     /// but they are required in order for nodes to discover one-another and share
     /// their basic state.
     pub async fn connect_with_registry<DS, R>(
-        node_id: impl Into<String>,
+        node_id: age::x25519::Identity,
         connection_cfg: ConnectionConfig,
         datastore: S,
         node_selector: DS,
@@ -247,9 +247,9 @@ where
         DS: NodeSelector + Send + 'static,
         R: ServiceRegistry + Send + Sync + Clone + 'static,
     {
-        let node_id = node_id.into();
+        let node_id_public_key = node_id.to_public();
 
-        let clock = Clock::new(crc32fast::hash(node_id.as_bytes()));
+        let clock = Clock::new(crc32fast::hash(node_id_public_key.to_string().as_bytes()));
         let storage = Arc::new(datastore);
 
         let group = KeyspaceGroup::new(storage.clone(), clock.clone()).await;
@@ -288,7 +288,7 @@ where
         let task_ctx = TaskServiceContext {
             clock: group.clock().clone(),
             network: network.clone(),
-            local_node_id: Cow::Owned(node_id.clone()),
+            local_node_id: Cow::Owned(node_id_public_key.to_string()),
             public_node_addr: node.public_addr,
         };
         let replication_ctx = ReplicationCycleContext {
@@ -310,7 +310,7 @@ where
         .await;
 
         info!(
-            node_id = %node_id,
+            node_id = %node_id_public_key,
             cluster_id = %options.cluster_id,
             listen_addr = %connection_cfg.listen_addr,
             "Datacake cluster connected."
@@ -834,7 +834,7 @@ struct ClusterInfo<'a> {
 /// The node will attempt to establish connections to the seed nodes and
 /// will broadcast the node's public address to communicate.
 async fn connect_node<S, R>(
-    node_id: String,
+    node_id: age::x25519::Identity,
     cluster_id: String,
     group: KeyspaceGroup<S>,
     network: RpcNetwork,
@@ -856,7 +856,7 @@ where
     let transport = GrpcTransport::new(context, chitchat_rx);
 
     let me =
-        ClusterMember::new(node_id, cluster_info.public_addr, cluster_info.data_center);
+        ClusterMember::new(node_id.to_public(), cluster_info.public_addr, cluster_info.data_center);
     let node = DatacakeNode::connect(
         me,
         cluster_info.listen_addr,

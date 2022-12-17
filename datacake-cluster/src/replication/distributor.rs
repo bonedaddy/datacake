@@ -216,7 +216,7 @@ async fn execute_batch(
         let node_id = node_id.clone();
         let limiter = limiter.clone();
         let batch = batch.clone();
-        let channel = ctx.network.get_or_connect_lazy(addr);
+        let channel = ctx.network.get_or_connect_lazy(Some(node_id.to_string()), addr);
         let mut client = ConsistencyClient::new(ctx.clock.clone(), channel);
 
         let task = tokio::spawn(async move {

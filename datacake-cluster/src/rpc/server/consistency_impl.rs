@@ -46,7 +46,7 @@ where
                 ))
             })?;
 
-            let remote_rpc_channel = self.network.get_or_connect_lazy(remote_addr);
+            let remote_rpc_channel = self.network.get_or_connect_lazy(Some(info.node_id.clone()), remote_addr);
 
             Some(PutContext {
                 progress: ProgressTracker::default(),

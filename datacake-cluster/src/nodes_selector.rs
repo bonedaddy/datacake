@@ -24,7 +24,7 @@ where
     tokio::spawn(async move {
         let mut total_nodes = 0;
         let mut data_centers = BTreeMap::new();
-        let mut cached_nodes = HashMap::<Consistency, (Instant, Vec<SocketAddr>)>::new();
+        let mut cached_nodes = HashMap::<Consistency, (Instant, Vec<(String, SocketAddr)>)>::new();
 
         while let Ok(op) = rx.recv_async().await {
             match op {
@@ -90,7 +90,7 @@ impl NodeSelectorHandle {
     /// Set the nodes which can be used by the selector.
     pub async fn set_nodes(
         &self,
-        data_centers: BTreeMap<Cow<'static, str>, Vec<SocketAddr>>,
+        data_centers: BTreeMap<Cow<'static, str>, Vec<(String, SocketAddr)>>,
     ) {
         self.tx
             .send_async(Op::SetNodes { data_centers })
@@ -105,7 +105,7 @@ impl NodeSelectorHandle {
     pub async fn get_nodes(
         &self,
         consistency: Consistency,
-    ) -> Result<Vec<SocketAddr>, ConsistencyError> {
+    ) -> Result<Vec<(String, SocketAddr)>, ConsistencyError> {
         let (tx, rx) = oneshot::channel();
 
         self.tx
@@ -119,11 +119,11 @@ impl NodeSelectorHandle {
 
 enum Op {
     SetNodes {
-        data_centers: BTreeMap<Cow<'static, str>, Vec<SocketAddr>>,
+        data_centers: BTreeMap<Cow<'static, str>, Vec<(String, SocketAddr)>>,
     },
     GetNodes {
         consistency: Consistency,
-        tx: oneshot::Sender<Result<Vec<SocketAddr>, ConsistencyError>>,
+        tx: oneshot::Sender<Result<Vec<(String, SocketAddr)>, ConsistencyError>>,
     },
 }
 
@@ -202,7 +202,7 @@ pub trait NodeSelector {
         total_nodes: usize,
         data_centers: &mut BTreeMap<Cow<'static, str>, NodeCycler>,
         consistency: Consistency,
-    ) -> Result<Vec<SocketAddr>, ConsistencyError>;
+    ) -> Result<Vec<(String, SocketAddr)>, ConsistencyError>;
 }
 
 #[derive(Debug, Copy, Clone, Default)]
@@ -223,7 +223,7 @@ impl NodeSelector for DCAwareSelector {
         total_nodes: usize,
         data_centers: &mut BTreeMap<Cow<'static, str>, NodeCycler>,
         consistency: Consistency,
-    ) -> Result<Vec<SocketAddr>, ConsistencyError> {
+    ) -> Result<Vec<(String, SocketAddr)>, ConsistencyError> {
         let mut selected_nodes = Vec::new();
 
         match consistency {
@@ -265,8 +265,8 @@ impl NodeSelector for DCAwareSelector {
                         nodes
                             .get_nodes()
                             .iter()
-                            .copied()
-                            .filter(|addr| addr != &local_node)
+                            .cloned()
+                            .filter(|(_, addr)| addr != &local_node)
                     })
                     .collect::<Vec<_>>();
                 let mut previous_total = selected_nodes.len();
@@ -294,8 +294,8 @@ impl NodeSelector for DCAwareSelector {
                         nodes
                             .get_nodes()
                             .iter()
-                            .copied()
-                            .filter(|addr| addr != &local_node)
+                            .cloned()
+                            .filter(|(_, addr)| addr != &local_node)
                             .take(majority),
                     );
                 }
@@ -304,7 +304,7 @@ impl NodeSelector for DCAwareSelector {
                 data_centers
                     .values()
                     .flat_map(|cycler| cycler.nodes.clone())
-                    .filter(|addr| addr != &local_node),
+                    .filter(|(_, addr)| addr != &local_node),
             ),
             Consistency::EachQuorum => {
                 for (name, nodes) in data_centers {
@@ -320,8 +320,8 @@ impl NodeSelector for DCAwareSelector {
                         nodes
                             .get_nodes()
                             .iter()
-                            .copied()
-                            .filter(|addr| addr != &local_node)
+                            .cloned()
+                            .filter(|(_, addr)| addr != &local_node)
                             .take(majority),
                     );
                 }
@@ -376,7 +376,7 @@ fn select_n_nodes(
     n: usize,
     total_nodes: usize,
     data_centers: &mut BTreeMap<Cow<'static, str>, NodeCycler>,
-) -> Result<Vec<SocketAddr>, ConsistencyError> {
+) -> Result<Vec<(String, SocketAddr)>, ConsistencyError> {
     use rand::seq::IteratorRandom;
     let mut rng = rand::thread_rng();
 
@@ -411,7 +411,7 @@ fn select_n_nodes(
     let mut selected_nodes = Vec::new();
     for (_, dc_nodes) in selected_dcs.into_iter() {
         let node = match dc_nodes.next() {
-            Some(node) => {
+            Some((node_id, node)) => {
                 if node == local_node {
                     if dc_nodes.len() <= 1 {
                         num_extra_nodes += 1;
@@ -421,7 +421,7 @@ fn select_n_nodes(
 
                     dc_nodes.next().unwrap()
                 } else {
-                    node
+                    (node_id, node)
                 }
             },
             // In theory this should never happen, but we handle it just in case.
@@ -472,22 +472,22 @@ fn select_n_nodes(
 #[derive(Debug)]
 pub struct NodeCycler {
     cursor: usize,
-    nodes: Vec<SocketAddr>,
+    nodes: Vec<(String, SocketAddr)>,
 }
 
 impl NodeCycler {
     /// Extends the set of nodes for the cycler.
-    pub fn extend(&mut self, iter: impl Iterator<Item = SocketAddr>) {
+    pub fn extend(&mut self, iter: impl Iterator<Item = (String, SocketAddr)>) {
         self.nodes.extend(iter);
     }
 
     /// Gets a mutable reference to the inner nodes buffer.
-    pub fn get_nodes_mut(&mut self) -> &mut Vec<SocketAddr> {
+    pub fn get_nodes_mut(&mut self) -> &mut Vec<(String, SocketAddr)> {
         &mut self.nodes
     }
 
     /// Gets a immutable reference to the inner nodes buffer.
-    pub fn get_nodes(&self) -> &Vec<SocketAddr> {
+    pub fn get_nodes(&self) -> &Vec<(String, SocketAddr)> {
         &self.nodes
     }
 
@@ -498,21 +498,21 @@ impl NodeCycler {
     }
 }
 
-impl From<Vec<SocketAddr>> for NodeCycler {
-    fn from(nodes: Vec<SocketAddr>) -> Self {
+impl From<Vec<(String, SocketAddr)>> for NodeCycler {
+    fn from(nodes: Vec<(String, SocketAddr)>) -> Self {
         Self { cursor: 0, nodes }
     }
 }
 
 impl Iterator for NodeCycler {
-    type Item = SocketAddr;
+    type Item = (String, SocketAddr);
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.cursor >= self.nodes.len() {
             self.cursor = 0;
         }
 
-        let res = self.nodes.get(self.cursor).copied();
+        let res = self.nodes.get(self.cursor).cloned();
 
         self.cursor += 1;
 
@@ -560,7 +560,7 @@ mod tests {
             .select_nodes(addr, "dc-0", total_nodes, &mut dc, Consistency::EachQuorum)
             .expect("Get nodes");
         assert_eq!(
-            nodes,
+            nodes.iter().map(|(_, addr)| addr.clone()).collect::<Vec<_>>(),
             vec![
                 make_addr(0, 1),
                 make_addr(1, 0),
@@ -572,13 +572,13 @@ mod tests {
         let nodes = selector
             .select_nodes(addr, "dc-0", total_nodes, &mut dc, Consistency::LocalQuorum)
             .expect("Get nodes");
-        assert_eq!(nodes, vec![make_addr(0, 1)]);
+        assert_eq!(nodes.iter().map(|(_, addr)| addr.clone()).collect::<Vec<_>>(), vec![make_addr(0, 1)]);
 
         let nodes = selector
             .select_nodes(addr, "dc-0", total_nodes, &mut dc, Consistency::Quorum)
             .expect("Get nodes");
         assert_eq!(
-            nodes,
+            nodes.iter().map(|(_, addr)| addr.clone()).collect::<Vec<_>>(),
             vec![make_addr(0, 1), make_addr(1, 0), make_addr(2, 0),]
         );
 
@@ -614,49 +614,49 @@ mod tests {
         let nodes =
             select_n_nodes(addr, "dc-0", 3, total_nodes, &mut dc).expect("get nodes");
         assert_eq!(
-            nodes,
+            nodes.iter().map(|(_, addr)| addr.clone()).collect::<Vec<_>>(),
             vec![make_addr(1, 0), make_addr(1, 1), make_addr(2, 0),],
         );
 
         let nodes =
             select_n_nodes(addr, "dc-0", 2, total_nodes, &mut dc).expect("get nodes");
-        assert_eq!(nodes, vec![make_addr(1, 0), make_addr(2, 0),],);
+        assert_eq!(nodes.iter().map(|(_, addr)| addr.clone()).collect::<Vec<_>>(), vec![make_addr(1, 0), make_addr(2, 0),],);
 
         let nodes =
             select_n_nodes(addr, "dc-0", 0, total_nodes, &mut dc).expect("get nodes");
-        assert_eq!(nodes, Vec::<SocketAddr>::new());
+        assert_eq!(nodes.iter().map(|(_, addr)| addr.clone()).collect::<Vec<_>>(), Vec::<SocketAddr>::new());
 
         // DC-1
         let nodes =
             select_n_nodes(addr, "dc-1", 3, total_nodes, &mut dc).expect("get nodes");
         assert_eq!(
-            nodes,
+            nodes.iter().map(|(_, addr)| addr.clone()).collect::<Vec<_>>(),
             vec![make_addr(0, 1), make_addr(0, 2), make_addr(2, 0),],
         );
 
         let nodes =
             select_n_nodes(addr, "dc-1", 2, total_nodes, &mut dc).expect("get nodes");
-        assert_eq!(nodes, vec![make_addr(0, 1), make_addr(2, 0),],);
+        assert_eq!(nodes.iter().map(|(_, addr)| addr.clone()).collect::<Vec<_>>(), vec![make_addr(0, 1), make_addr(2, 0),],);
 
         let nodes =
             select_n_nodes(addr, "dc-1", 0, total_nodes, &mut dc).expect("get nodes");
-        assert_eq!(nodes, Vec::<SocketAddr>::new());
+        assert_eq!(nodes.iter().map(|(_, addr)| addr.clone()).collect::<Vec<_>>(), Vec::<SocketAddr>::new());
 
         // DC-2
         let nodes =
             select_n_nodes(addr, "dc-2", 3, total_nodes, &mut dc).expect("get nodes");
         assert_eq!(
-            nodes,
+            nodes.iter().map(|(_, addr)| addr.clone()).collect::<Vec<_>>(),
             vec![make_addr(0, 2), make_addr(0, 0), make_addr(1, 1),],
         );
 
         let nodes =
             select_n_nodes(addr, "dc-2", 2, total_nodes, &mut dc).expect("get nodes");
-        assert_eq!(nodes, vec![make_addr(0, 1), make_addr(1, 0),],);
+        assert_eq!(nodes.iter().map(|(_, addr)| addr.clone()).collect::<Vec<_>>(), vec![make_addr(0, 1), make_addr(1, 0),],);
 
         let nodes =
             select_n_nodes(addr, "dc-2", 0, total_nodes, &mut dc).expect("get nodes");
-        assert_eq!(nodes, Vec::<SocketAddr>::new());
+        assert_eq!(nodes.iter().map(|(_, addr)| addr.clone()).collect::<Vec<_>>(), Vec::<SocketAddr>::new());
     }
 
     #[test]
@@ -669,17 +669,17 @@ mod tests {
         let nodes =
             select_n_nodes(addr, "dc-0", 3, total_nodes, &mut dc).expect("get nodes");
         assert_eq!(
-            nodes,
+            nodes.iter().map(|(_, addr)| addr.clone()).collect::<Vec<_>>(),
             vec![make_addr(0, 1), make_addr(0, 2), make_addr(1, 0),],
         );
 
         let nodes =
             select_n_nodes(addr, "dc-0", 2, total_nodes, &mut dc).expect("get nodes");
-        assert_eq!(nodes, vec![make_addr(1, 1), make_addr(1, 0),],);
+        assert_eq!(nodes.iter().map(|(_, addr)| addr.clone()).collect::<Vec<_>>(), vec![make_addr(1, 1), make_addr(1, 0),],);
 
         let nodes =
             select_n_nodes(addr, "dc-0", 0, total_nodes, &mut dc).expect("get nodes");
-        assert_eq!(nodes, Vec::<SocketAddr>::new());
+        assert_eq!(nodes.iter().map(|(_, addr)| addr.clone()).collect::<Vec<_>>(), Vec::<SocketAddr>::new());
     }
 
     fn make_dc(distribution: Vec<usize>) -> BTreeMap<Cow<'static, str>, NodeCycler> {
@@ -690,7 +690,8 @@ mod tests {
             let mut nodes = Vec::new();
             for i in 0..num_nodes {
                 let addr = make_addr(dc_n as u8, i as u8);
-                nodes.push(addr);
+                // todo: decide how to set the node name here
+                nodes.push((age::x25519::Identity::generate().to_public().to_string(), addr));
             }
 
             dc.insert(name, NodeCycler::from(nodes));

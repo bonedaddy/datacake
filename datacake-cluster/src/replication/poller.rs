@@ -259,7 +259,7 @@ where
         "Getting keyspace changes on remote node.",
     );
 
-    let channel = ctx.network.get_or_connect(target_node_addr).await?;
+    let channel = ctx.network.get_or_connect(Some(target_node_id.clone()), target_node_addr).await?;
     let mut client = ReplicationClient::new(ctx.clock().clone(), channel.clone());
     let keyspace_timestamps = client.poll_keyspace().await?;
 
@@ -386,7 +386,7 @@ async fn begin_keyspace_sync<S>(
 where
     S: Storage + Send + Sync + 'static,
 {
-    let channel = ctx.network.get_or_connect(target_rpc_addr).await?;
+    let channel = ctx.network.get_or_connect(Some(target_node_id.clone()), target_rpc_addr).await?;
     let keyspace = ctx.group.get_or_create_keyspace(&keyspace_name).await;
     let client = ReplicationClient::new(ctx.clock().clone(), channel.clone());
 

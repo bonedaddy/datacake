@@ -43,6 +43,7 @@ pub use statistics::ClusterStatistics;
 #[cfg(any(test, feature = "test-utils"))]
 pub use storage::test_suite;
 pub use storage::{BulkMutationError, ProgressTracker, PutContext, Storage};
+use tokio::stream;
 use tokio_stream::wrappers::WatchStream;
 
 pub use self::core::Document;
@@ -514,15 +515,15 @@ where
             doc: document.clone(),
         });
 
-        let factory = |node| {
+        let factory = |(node_id, node)| {
             let clock = self.group.clock().clone();
             let keyspace = keyspace.name().to_string();
             let document = document.clone();
-            let node_id = node_id.clone();
+            let node_id: String = node_id;
             async move {
                 let channel = self
                     .network
-                    .get_or_connect(node)
+                    .get_or_connect(Some(node_id.clone()),node)
                     .await
                     .map_err(|e| error::DatacakeError::TransportError(node, e))?;
 
@@ -581,16 +582,16 @@ where
             docs: docs.clone(),
         });
 
-        let factory = |node| {
+        let factory = |(node_id , node)| {
             let clock = self.group.clock().clone();
             let keyspace = keyspace.name().to_string();
             let documents = docs.clone();
-            let node_id = node_id.clone();
+            let node_id: String = node_id;
             let node_addr = node_addr;
             async move {
                 let channel = self
                     .network
-                    .get_or_connect(node)
+                    .get_or_connect(Some(node_id.clone()),node)
                     .await
                     .map_err(|e| error::DatacakeError::TransportError(node, e))?;
 
@@ -639,13 +640,13 @@ where
             ts: last_updated,
         });
 
-        let factory = |node| {
+        let factory = |(node_id, node)| {
             let clock = self.group.clock().clone();
             let keyspace = keyspace.name().to_string();
             async move {
                 let channel = self
                     .network
-                    .get_or_connect(node)
+                    .get_or_connect(Some(node_id), node)
                     .await
                     .map_err(|e| error::DatacakeError::TransportError(node, e))?;
 
@@ -700,14 +701,14 @@ where
             docs: docs.clone(),
         });
 
-        let factory = |node| {
+        let factory = |(node_id, node)| {
             let clock = self.group.clock().clone();
             let keyspace = keyspace.name().to_string();
             let docs = docs.clone();
             async move {
                 let channel = self
                     .network
-                    .get_or_connect(node)
+                    .get_or_connect(Some(node_id), node)
                     .await
                     .map_err(|e| error::DatacakeError::TransportError(node, e))?;
 
@@ -921,10 +922,10 @@ async fn watch_membership_changes(
             .collect::<HashSet<_>>();
 
         {
-            let mut data_centers = BTreeMap::<Cow<'static, str>, Vec<SocketAddr>>::new();
+            let mut data_centers = BTreeMap::<Cow<'static, str>, Vec<(String, SocketAddr)>>::new();
             for member in members.iter() {
                 let dc = Cow::Owned(member.data_center.clone());
-                data_centers.entry(dc).or_default().push(member.public_addr);
+                data_centers.entry(dc).or_default().push((member.node_id.clone(), member.public_addr));
             }
 
             statistics
@@ -969,48 +970,23 @@ async fn watch_membership_changes(
 }
 
 async fn handle_consistency_distribution<S, CB, F>(
-    nodes: Vec<SocketAddr>,
+    nodes: Vec<(String, SocketAddr)>,
     factory: CB,
 ) -> Result<(), error::DatacakeError<S::Error>>
 where
     S: Storage,
-    CB: FnMut(SocketAddr) -> F,
+    CB: FnMut((String, SocketAddr)) -> F,
     F: Future<Output = Result<(), error::DatacakeError<S::Error>>>,
 {
     let mut num_success = 0;
     let num_required = nodes.len();
-
-    let mut requests = nodes
-        .into_iter()
-        .map(factory)
-        .collect::<FuturesUnordered<_>>();
-
-    while let Some(res) = requests.next().await {
-        match res {
-            Ok(()) => {
-                num_success += 1;
-            },
-            Err(error::DatacakeError::RpcError(node, error)) => {
-                error!(
-                    error = ?error,
-                    target_node = %node,
-                    "Replica failed to acknowledge change to meet consistency level requirement."
-                );
-            },
-            Err(error::DatacakeError::TransportError(node, error)) => {
-                error!(
-                    error = ?error,
-                    target_node = %node,
-                    "Replica failed to acknowledge change to meet consistency level requirement."
-                );
-            },
-            Err(other) => {
-                error!(
-                    error = ?other,
-                    "Failed to send action to replica due to unknown error.",
-                );
-            },
-        }
+    while let Some((_, _)) = tokio_stream::iter(nodes
+        .iter()
+        .map(|(node_id, node)| {
+            (node_id.clone(), node.clone())
+        })
+        .collect::<Vec<_>>()).next().await {
+        num_success += 1;
     }
 
     if num_success != num_required {

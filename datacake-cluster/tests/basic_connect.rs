@@ -11,6 +11,7 @@ use datacake_cluster::{
 
 #[tokio::test]
 async fn test_basic_connect() -> anyhow::Result<()> {
+    std::env::set_var("RUST_LOG", "trace,sled=info");
     let _ = tracing_subscriber::fmt::try_init();
 
     let addr = "127.0.0.1:8000".parse::<SocketAddr>().unwrap();

@@ -67,15 +67,13 @@ impl ToString for NodeID {
 
 impl std::fmt::Debug for NodeIdentifier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("NodeIdentifier")
-        .field("id", &self.rage_id()).finish()
+        f.write_str(&self.rage_id())
     }
 }
 
 impl std::fmt::Display for NodeIdentifier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("NodeIdentifier")
-        .field("id", &self.rage_id()).finish()
+        f.write_str(&self.rage_id())
     }
 }
 
@@ -154,9 +152,7 @@ impl From<age::x25519::Recipient> for NodeID {
 
 impl std::fmt::Debug for NodeID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("NodeId")
-        .field("0", &self.0)
-        .finish()
+        f.write_str(&self.to_string())
     }
 }
 

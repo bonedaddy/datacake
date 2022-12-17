@@ -51,7 +51,7 @@ where
                 Ok(nid) => nid,
                 Err(err) => return Err(Status::internal(format!("{:#?}", err))),
             };
-            let remote_rpc_channel = self.network.get_or_connect_lazy(Some(nid), remote_addr);
+            let remote_rpc_channel = self.network.get_or_connect_lazy(remote_addr);
 
             Some(PutContext {
                 progress: ProgressTracker::default(),

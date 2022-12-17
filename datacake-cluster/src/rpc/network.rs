@@ -15,8 +15,6 @@ pub const CONNECT_TIMEOUT_LIMIT: Duration = Duration::from_secs(2);
 #[derive(Clone)]
 pub struct RpcNetworkClient {
     pub(crate) channel: Channel,
-    /// TODO: figure out how to handle sections which done have access to node id
-    pub(crate) node_id: Option<NodeID>,
 }
 
 #[derive(Clone, Default)]
@@ -27,7 +25,7 @@ pub struct RpcNetwork {
 
 impl RpcNetwork {
     /// Attempts to get an already existing connection or creates a new connection.
-    pub async fn get_or_connect(&self, node_id: Option<NodeID>, addr: SocketAddr) -> Result<Channel, Error> {
+    pub async fn get_or_connect(&self, addr: SocketAddr) -> Result<Channel, Error> {
         {
             let guard = self.clients.read();
             if let Some(client) = guard.get(&addr) {
@@ -36,11 +34,11 @@ impl RpcNetwork {
         }
 
         trace!(addr = %addr, "Connect client to network.");
-        self.connect(node_id, addr).await
+        self.connect(addr).await
     }
 
     /// Connects to a given address and adds it to the clients.
-    pub async fn connect(&self,  node_id: Option<NodeID>, addr: SocketAddr) -> Result<Channel, Error> {
+    pub async fn connect(&self, addr: SocketAddr) -> Result<Channel, Error> {
         let uri = format!("http://{}", addr);
         let channel = Endpoint::from_str(&uri)
             .unwrap()
@@ -51,13 +49,18 @@ impl RpcNetwork {
 
         {
             let mut guard = self.clients.write();
-            guard.insert(addr, RpcNetworkClient { channel: channel.clone(), node_id: if let Some(id) = node_id { Some(id) } else { None } });
+            guard.insert(
+                addr,
+                RpcNetworkClient {
+                    channel: channel.clone(),
+                },
+            );
         }
 
         Ok(channel)
     }
     /// Attempts to get an already existing connection or creates a new connection.
-    pub fn get_or_connect_lazy(&self, node_id: Option<NodeID>, addr: SocketAddr) -> Channel {
+    pub fn get_or_connect_lazy(&self, addr: SocketAddr) -> Channel {
         {
             let guard = self.clients.read();
             if let Some(client) = guard.get(&addr) {
@@ -65,11 +68,11 @@ impl RpcNetwork {
             }
         }
 
-        self.connect_lazy(node_id, addr)
+        self.connect_lazy(addr)
     }
 
     /// Creates a new endpoint channel which connects lazily to the node.
-    pub fn connect_lazy(&self, node_id: Option<NodeID>, addr: SocketAddr) -> Channel {
+    pub fn connect_lazy(&self, addr: SocketAddr) -> Channel {
         let uri = format!("http://{}", addr);
         let channel = Endpoint::from_str(&uri)
             .unwrap()
@@ -79,7 +82,12 @@ impl RpcNetwork {
 
         {
             let mut guard = self.clients.write();
-            guard.insert(addr,RpcNetworkClient { channel: channel.clone(), node_id: if let Some(id) = node_id { Some(id) } else { None } });
+            guard.insert(
+                addr,
+                RpcNetworkClient {
+                    channel: channel.clone(),
+                },
+            );
         }
 
         channel

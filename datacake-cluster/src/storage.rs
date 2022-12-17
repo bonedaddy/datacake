@@ -368,9 +368,7 @@ pub mod test_suite {
         run_test_suite(MemStore::default()).await
     }
 
-    pub async fn run_test_suite<S: Storage + Send + Sync + 'static>(
-        storage: S,
-    ) {
+    pub async fn run_test_suite<S: Storage + Send + Sync + 'static>(storage: S) {
         let mut clock = HLCTimestamp::new(get_unix_timestamp_ms(), 0, 0);
         info!("Starting test suite for storage: {}", type_name::<S>());
 
@@ -395,7 +393,7 @@ pub mod test_suite {
 
         static KEYSPACE: &str = "first-keyspace";
         let check_list = vec![KEYSPACE.to_string()];
-        
+
         let res = storage.iter_metadata(KEYSPACE).await;
         if let Err(e) = res {
             panic!(
@@ -723,7 +721,6 @@ pub mod test_suite {
             .await
             .expect("Mark document as tombstone.");
 
-
         let res = storage.get(KEYSPACE, 2).await;
         assert!(
             res.is_ok(),
@@ -750,7 +747,6 @@ pub mod test_suite {
             )
             .await
             .expect("Merk documents as tombstones");
-
 
         let res = storage
             .multi_get(KEYSPACE, [1, 2, 3].into_iter())

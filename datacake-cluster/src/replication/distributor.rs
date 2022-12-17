@@ -24,7 +24,7 @@ pub struct TaskServiceContext {
     /// The network handle which contains all RPC connections.
     pub(crate) network: RpcNetwork,
     /// The unique ID of the node running.
-    pub(crate) local_node_id: Cow<'static, str>,
+    pub(crate) local_node_id: NodeID,
     /// The public RPC address of the node running.
     pub(crate) public_node_addr: SocketAddr,
 }
@@ -217,7 +217,7 @@ async fn execute_batch(
         let node_id = node_id.clone();
         let limiter = limiter.clone();
         let batch = batch.clone();
-        let channel = ctx.network.get_or_connect_lazy(Some(node_id), addr);
+        let channel = ctx.network.get_or_connect_lazy(addr);
         let mut client = ConsistencyClient::new(ctx.clock.clone(), channel);
 
         let task = tokio::spawn(async move {

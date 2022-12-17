@@ -20,7 +20,7 @@ use tokio_stream::wrappers::WatchStream;
 use tokio_stream::StreamExt;
 
 use crate::error::DatacakeError;
-use crate::node_identifier::{NodeIdentifier, NodeID};
+use crate::node_identifier::{NodeID, NodeIdentifier};
 use crate::{ClusterStatistics, DEFAULT_DATA_CENTER};
 
 static DATA_CENTER_KEY: &str = "data_center";
@@ -33,7 +33,7 @@ const GOSSIP_INTERVAL: Duration = if cfg!(test) {
 #[derive(Clone, Eq, PartialEq)]
 pub struct ClusterMember {
     /// A unique ID for the given node in the cluster.
-    /// 
+    ///
     /// this is the node's age public key
     pub node_id: NodeID,
     /// The public address of the nod.
@@ -269,7 +269,12 @@ mod tests {
         let _ = tracing_subscriber::fmt::try_init();
 
         let transport = ChannelTransport::default();
-        let cluster = create_node_for_test(age::x25519::Identity::generate(), Vec::new(), &transport).await?;
+        let cluster = create_node_for_test(
+            age::x25519::Identity::generate(),
+            Vec::new(),
+            &transport,
+        )
+        .await?;
 
         let members: Vec<SocketAddr> = cluster
             .members()
@@ -287,11 +292,25 @@ mod tests {
         let _ = tracing_subscriber::fmt::try_init();
 
         let transport = ChannelTransport::default();
-        let node1 = create_node_for_test(age::x25519::Identity::generate(), Vec::new(), &transport).await?;
+        let node1 = create_node_for_test(
+            age::x25519::Identity::generate(),
+            Vec::new(),
+            &transport,
+        )
+        .await?;
         let node_1_gossip_addr = node1.public_addr.to_string();
-        let node2 =
-            create_node_for_test(age::x25519::Identity::generate(), vec![node_1_gossip_addr.clone()], &transport).await?;
-        let node3 = create_node_for_test(age::x25519::Identity::generate(), vec![node_1_gossip_addr], &transport).await?;
+        let node2 = create_node_for_test(
+            age::x25519::Identity::generate(),
+            vec![node_1_gossip_addr.clone()],
+            &transport,
+        )
+        .await?;
+        let node3 = create_node_for_test(
+            age::x25519::Identity::generate(),
+            vec![node_1_gossip_addr],
+            &transport,
+        )
+        .await?;
 
         let wait_secs = Duration::from_secs(30);
         for cluster in [&node1, &node2, &node3] {
@@ -361,13 +380,12 @@ mod tests {
     }
 }
 
-
 impl std::fmt::Debug for ClusterMember {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ClusterMember")
-        .field("node_id", &self.chitchat_id())
-        .field("public_addr", &self.public_addr)
-        .field("data_center", &self.data_center)
-        .finish()
+            .field("node_id", &self.chitchat_id())
+            .field("public_addr", &self.public_addr)
+            .field("data_center", &self.data_center)
+            .finish()
     }
 }

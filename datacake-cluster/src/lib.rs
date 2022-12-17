@@ -1,12 +1,12 @@
 #[macro_use]
 extern crate tracing;
 
-pub mod node_identifier;
 mod clock;
 mod core;
 pub mod error;
 mod keyspace;
 mod node;
+pub mod node_identifier;
 mod nodes_selector;
 mod replication;
 mod rpc;
@@ -34,7 +34,11 @@ use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use itertools::Itertools;
 pub use nodes_selector::{
-    Consistency, ConsistencyError, DCAwareSelector, NodeSelector, NodeSelectorHandle,
+    Consistency,
+    ConsistencyError,
+    DCAwareSelector,
+    NodeSelector,
+    NodeSelectorHandle,
 };
 pub use rpc::ServiceRegistry;
 pub use statistics::ClusterStatistics;
@@ -47,16 +51,29 @@ use tokio_stream::wrappers::WatchStream;
 pub use self::core::Document;
 use crate::clock::Clock;
 use crate::keyspace::{
-    Del, KeyspaceGroup, MultiDel, MultiSet, Set, CONSISTENCY_SOURCE_ID,
+    Del,
+    KeyspaceGroup,
+    MultiDel,
+    MultiSet,
+    Set,
+    CONSISTENCY_SOURCE_ID,
 };
 use crate::node::{ClusterMember, DatacakeNode};
 use crate::node_identifier::NodeID;
 use crate::replication::{
-    MembershipChanges, Mutation, ReplicationCycleContext, ReplicationHandle,
-    TaskDistributor, TaskServiceContext,
+    MembershipChanges,
+    Mutation,
+    ReplicationCycleContext,
+    ReplicationHandle,
+    TaskDistributor,
+    TaskServiceContext,
 };
 use crate::rpc::{
-    ConsistencyClient, Context, DefaultRegistry, GrpcTransport, RpcNetwork,
+    ConsistencyClient,
+    Context,
+    DefaultRegistry,
+    GrpcTransport,
+    RpcNetwork,
     TIMEOUT_LIMIT,
 };
 
@@ -276,7 +293,7 @@ where
         let task_ctx = TaskServiceContext {
             clock: group.clock().clone(),
             network: network.clone(),
-            local_node_id: Cow::Owned(node_id_public_key.to_string()),
+            local_node_id: node_id_public_key.clone().into(),
             public_node_addr: node.public_addr,
         };
         let replication_ctx = ReplicationCycleContext {
@@ -487,7 +504,6 @@ where
             node_map.insert(node.clone(), id.clone());
         });
 
-        let node_id = self.node_id.clone();
         let node_addr = self.public_addr;
         let last_updated = self.clock.get_time().await;
         let document = Document::new(doc_id, last_updated, data);
@@ -522,7 +538,7 @@ where
             async move {
                 let channel = self
                     .network
-                    .get_or_connect(Some(node_id), node)
+                    .get_or_connect(node)
                     .await
                     .map_err(|e| error::DatacakeError::TransportError(node, e))?;
 
@@ -601,7 +617,7 @@ where
             async move {
                 let channel = self
                     .network
-                    .get_or_connect(Some(node_id), node)
+                    .get_or_connect(node)
                     .await
                     .map_err(|e| error::DatacakeError::TransportError(node, e))?;
 
@@ -669,7 +685,7 @@ where
             async move {
                 let channel = self
                     .network
-                    .get_or_connect(Some(node_id), node)
+                    .get_or_connect(node)
                     .await
                     .map_err(|e| error::DatacakeError::TransportError(node, e))?;
 
@@ -743,7 +759,7 @@ where
             async move {
                 let channel = self
                     .network
-                    .get_or_connect(Some(node_id), node)
+                    .get_or_connect(node)
                     .await
                     .map_err(|e| error::DatacakeError::TransportError(node, e))?;
 
@@ -954,9 +970,7 @@ async fn watch_membership_changes(
 
         let new_network_set = members
             .iter()
-            .filter(|member| {
-                member.node_id != self_node_id
-            })
+            .filter(|member| member.node_id != self_node_id)
             .map(|member| (member.node_id.clone(), member.public_addr))
             .collect::<HashSet<_>>();
 
@@ -1000,9 +1014,7 @@ async fn watch_membership_changes(
                 "Node has connected to the cluster."
             );
 
-            membership_changes
-                .joined
-                .push((*node_id, *addr));
+            membership_changes.joined.push((*node_id, *addr));
         }
 
         task_service.membership_change(membership_changes.clone());

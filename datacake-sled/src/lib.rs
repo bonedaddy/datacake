@@ -51,6 +51,11 @@ impl Storage for SledStorage {
             .tree_names()
             .iter()
             .filter_map(|tn| {
+                // because sled groups keyspaces into trees, but also comes with a "default tree"
+                //
+                // this check serves two purposes:
+                //      1) prevents returning the default tree as a keyspace
+                //      2) parses the formatted name name component to extract the keyspace
                 if let Some(meta_data_keyspace) = tn.strip_prefix(b"__metadata_") {
                     if let Ok(tn) = String::from_utf8(meta_data_keyspace.to_vec()) {
                         return Some(tn);
@@ -263,16 +268,21 @@ impl Storage for SledStorage {
                 match data_tx.get(doc_key) {
                     Ok(Some(value)) => {
                         let mut sled_doc: SledDocument = value.clone().into();
-                        sled_doc.set_as_tombstone();
+                        // TODO: should we be updating the timestamp here?
+                        sled_doc.set_as_tombstone(Some(*ts));
+                        data_batch.insert(&doc_key, sled_doc);
                         match meta_tx.get(doc_key) {
                             Ok(Some(value)) => {
                                 let mut meta_doc: Metadata = value.into();
                                 meta_doc.tombstoned = true;
                                 meta_doc.last_updated = *ts;
                                 meta_batch.insert(&doc_key, meta_doc);
-                                data_batch.remove(&doc_key);
+                                //data_batch.remove(&doc_key);
                             },
-                            _ => continue,
+                            _ => {
+                                // TODO: should the metadata be created here if it does not exist??
+                                continue;
+                            },
                         }
                     },
                     _ => {
@@ -364,8 +374,10 @@ impl Storage for SledStorage {
                     Ok(Some(_value)) => match data_tx.get(doc_key) {
                         Ok(Some(value)) => {
                             let sled_document: SledDocument = value.into();
-                            let sled_doc: Document = sled_document.into();
-                            buffer.push(sled_doc);
+                            // if the data isn't tombstoned, then return it
+                            if !sled_document.tombstoned {
+                                buffer.push(sled_document.inner);
+                            }
                         },
                         Ok(None) => (),
                         Err(err) => log::error!(
@@ -426,7 +438,10 @@ mod models {
     }
 
     impl SledDocument {
-        pub fn set_as_tombstone(&mut self) {
+        pub fn set_as_tombstone(&mut self, update_ts: Option<HLCTimestamp>) {
+            if let Some(ts) = update_ts {
+                self.inner.last_updated = ts;
+            }
             self.inner.data.clear();
             self.tombstoned = true;
         }
@@ -525,6 +540,6 @@ mod tests {
         let _ = tracing_subscriber::fmt::try_init();
 
         let storage = SledStorage::open_temporary().unwrap();
-        test_suite::run_test_suite(storage, true).await;
+        test_suite::run_test_suite(storage).await;
     }
 }

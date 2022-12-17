@@ -364,19 +364,18 @@ pub mod test_suite {
     async fn test_suite_semantics() {
         use crate::test_utils::MemStore;
         let _ = tracing_subscriber::fmt::try_init();
-        run_test_suite(MemStore::default(), false).await
+        run_test_suite(MemStore::default()).await
     }
 
     pub async fn run_test_suite<S: Storage + Send + Sync + 'static>(
         storage: S,
-        sled: bool,
     ) {
         let mut clock = HLCTimestamp::new(get_unix_timestamp_ms(), 0, 0);
         info!("Starting test suite for storage: {}", type_name::<S>());
 
         let storage = InstrumentedStorage(storage);
 
-        test_keyspace_semantics(&storage, &mut clock, sled).await;
+        test_keyspace_semantics(&storage, &mut clock).await;
         info!("test_keyspace_semantics OK");
 
         test_basic_persistence_test(&storage, &mut clock).await;
@@ -390,17 +389,12 @@ pub mod test_suite {
     async fn test_keyspace_semantics<S: Storage + Sync>(
         storage: &S,
         clock: &mut HLCTimestamp,
-        sled: bool,
     ) {
         info!("Starting test");
 
         static KEYSPACE: &str = "first-keyspace";
-        let check_list = if sled {
-            vec![KEYSPACE.to_string()]
-        } else {
-            vec![KEYSPACE.to_string()]
-        };
-        println!("Ks list {:?}", check_list);
+        let check_list = vec![KEYSPACE.to_string()];
+        
         let res = storage.iter_metadata(KEYSPACE).await;
         if let Err(e) = res {
             panic!(
@@ -728,12 +722,6 @@ pub mod test_suite {
             .await
             .expect("Mark document as tombstone.");
 
-        // NOTE: i manually added this call as the test seems to expect the entry in the keyspace
-        //       to have been removed
-        storage
-            .remove_tombstones(KEYSPACE, [2_u64].into_iter())
-            .await
-            .unwrap();
 
         let res = storage.get(KEYSPACE, 2).await;
         assert!(
@@ -761,12 +749,7 @@ pub mod test_suite {
             )
             .await
             .expect("Merk documents as tombstones");
-        // NOTE: i manually added this call as the test seems to expect the entry in the keyspace
-        //       to have been removed
-        storage
-            .remove_tombstones(KEYSPACE, [1_u64, 2_u64, 4_u64].into_iter())
-            .await
-            .unwrap();
+
 
         let res = storage
             .multi_get(KEYSPACE, [1, 2, 3].into_iter())
@@ -784,12 +767,6 @@ pub mod test_suite {
             .mark_as_tombstone(KEYSPACE, doc_3.id, doc_3.last_updated)
             .await
             .expect("Delete documents from store.");
-        // NOTE: i manually added this call as the test seems to expect the entry in the keyspace
-        //       to have been removed
-        storage
-            .remove_tombstones(KEYSPACE, [3_u64].into_iter())
-            .await
-            .unwrap();
 
         #[allow(clippy::needless_collect)]
         let res = storage

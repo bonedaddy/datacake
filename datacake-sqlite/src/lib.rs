@@ -305,6 +305,6 @@ mod tests {
     #[tokio::test]
     async fn test_storage_logic() {
         let storage = SqliteStorage::open_in_memory().await.unwrap();
-        test_suite::run_test_suite(storage, false).await;
+        test_suite::run_test_suite(storage).await;
     }
 }

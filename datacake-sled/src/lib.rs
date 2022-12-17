@@ -540,6 +540,6 @@ mod tests {
         let _ = tracing_subscriber::fmt::try_init();
 
         let storage = SledStorage::open_temporary().unwrap();
-        test_suite::run_test_suite(storage, true).await;
+        test_suite::run_test_suite(storage).await;
     }
 }

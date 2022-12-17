@@ -364,19 +364,18 @@ pub mod test_suite {
     async fn test_suite_semantics() {
         use crate::test_utils::MemStore;
         let _ = tracing_subscriber::fmt::try_init();
-        run_test_suite(MemStore::default(), false).await
+        run_test_suite(MemStore::default()).await
     }
 
     pub async fn run_test_suite<S: Storage + Send + Sync + 'static>(
         storage: S,
-        sled: bool,
     ) {
         let mut clock = HLCTimestamp::new(get_unix_timestamp_ms(), 0, 0);
         info!("Starting test suite for storage: {}", type_name::<S>());
 
         let storage = InstrumentedStorage(storage);
 
-        test_keyspace_semantics(&storage, &mut clock, sled).await;
+        test_keyspace_semantics(&storage, &mut clock).await;
         info!("test_keyspace_semantics OK");
 
         test_basic_persistence_test(&storage, &mut clock).await;
@@ -390,17 +389,12 @@ pub mod test_suite {
     async fn test_keyspace_semantics<S: Storage + Sync>(
         storage: &S,
         clock: &mut HLCTimestamp,
-        sled: bool,
     ) {
         info!("Starting test");
 
         static KEYSPACE: &str = "first-keyspace";
-        let check_list = if sled {
-            vec![KEYSPACE.to_string()]
-        } else {
-            vec![KEYSPACE.to_string()]
-        };
-        println!("Ks list {:?}", check_list);
+        let check_list = vec![KEYSPACE.to_string()];
+        
         let res = storage.iter_metadata(KEYSPACE).await;
         if let Err(e) = res {
             panic!(

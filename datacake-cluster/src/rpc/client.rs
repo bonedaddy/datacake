@@ -184,7 +184,6 @@ impl ReplicationClient {
             let ts = HLCTimestamp::from(ts);
             timestamps.insert(Cow::Owned(keyspace), Arc::new(AtomicCell::new(ts)));
         }
-
         Ok(timestamps)
     }
 

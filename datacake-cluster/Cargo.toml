@@ -32,7 +32,7 @@ bytecheck = "0.6.9"
 puppet = "0.1.3"
 
 chitchat = { version = "0.5.1", package  = "datacake-chitchat-fork" }
-tokio = { version = "1", default-features = false, features = ["sync", "time"] }
+tokio = { version = "1", features = ["full"] }
 rkyv = { version = "0.7.9", features = ["validation"] }
 
 datacake-crdt = { path = "../datacake-crdt", version = "0.3", features = ["rkyv-support"] }
@@ -44,7 +44,7 @@ test-utils = []
 anyhow = "1"
 tracing-subscriber = "0.3.15"
 bytes = "1.2.1"
-
+datacake-sled = {path = "../datacake-sled"}
 [build-dependencies]
 tonic-build = "0.8.0"
 prost-build = "0.11.1"

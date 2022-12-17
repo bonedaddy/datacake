@@ -11,6 +11,7 @@ use tonic::transport::Channel;
 
 use crate::core::Document;
 
+#[derive(Debug)]
 /// A utility for tracking the progress a task has made.
 pub struct ProgressWatcher {
     inner: ProgressTracker,
@@ -283,6 +284,8 @@ pub trait Storage {
     ///
     /// If the given `keyspace` does not exist, it should be created. A new keyspace name should
     /// not result in an error being returned by the storage trait.
+    ///
+    /// If the document is marked as tombstoned, it should be untombstoned
     async fn multi_put(
         &self,
         keyspace: &str,
@@ -318,6 +321,9 @@ pub trait Storage {
     ///     This operation is permitted to delete the actual value of the document, but there
     ///     must be a marker indicating that the given document has been marked as deleted at
     ///     the provided timestamp.
+    ///
+    /// TODO: the above note is unclear, what happens when the value is tombstoned, and data is deleted?
+    ///       once of the test suites is currently failing
     async fn mark_many_as_tombstone(
         &self,
         keyspace: &str,
@@ -361,7 +367,9 @@ pub mod test_suite {
         run_test_suite(MemStore::default()).await
     }
 
-    pub async fn run_test_suite<S: Storage + Send + Sync + 'static>(storage: S) {
+    pub async fn run_test_suite<S: Storage + Send + Sync + 'static>(
+        storage: S,
+    ) {
         let mut clock = HLCTimestamp::new(get_unix_timestamp_ms(), 0, 0);
         info!("Starting test suite for storage: {}", type_name::<S>());
 
@@ -385,7 +393,8 @@ pub mod test_suite {
         info!("Starting test");
 
         static KEYSPACE: &str = "first-keyspace";
-
+        let check_list = vec![KEYSPACE.to_string()];
+        
         let res = storage.iter_metadata(KEYSPACE).await;
         if let Err(e) = res {
             panic!(
@@ -432,11 +441,12 @@ pub mod test_suite {
             .get_keyspace_list()
             .await
             .expect("Get keyspace list");
-        assert_eq!(
-            keyspace_list,
-            vec![KEYSPACE.to_string()],
-            "Returned keyspace list (left) should match value provided (right)."
-        );
+        {
+            assert_eq!(
+                keyspace_list, check_list,
+                "Returned keyspace list (left) should match value provided (right)."
+            );
+        }
 
         let metadata = storage
             .iter_metadata("second-keyspace")
@@ -711,6 +721,8 @@ pub mod test_suite {
             .mark_as_tombstone(KEYSPACE, doc_2.id, doc_2.last_updated)
             .await
             .expect("Mark document as tombstone.");
+
+
         let res = storage.get(KEYSPACE, 2).await;
         assert!(
             res.is_ok(),
@@ -719,7 +731,8 @@ pub mod test_suite {
         );
         assert!(
             res.unwrap().is_none(),
-            "Expected no document to be returned."
+            "{}",
+            format!("Expected no document to be returned for {:#?}.", doc_2)
         );
 
         doc_1.last_updated = clock.send().unwrap();
@@ -736,6 +749,8 @@ pub mod test_suite {
             )
             .await
             .expect("Merk documents as tombstones");
+
+
         let res = storage
             .multi_get(KEYSPACE, [1, 2, 3].into_iter())
             .await
@@ -752,6 +767,7 @@ pub mod test_suite {
             .mark_as_tombstone(KEYSPACE, doc_3.id, doc_3.last_updated)
             .await
             .expect("Delete documents from store.");
+
         #[allow(clippy::needless_collect)]
         let res = storage
             .multi_get(KEYSPACE, [1, 2, 3].into_iter())

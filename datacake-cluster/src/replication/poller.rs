@@ -6,7 +6,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::anyhow;
 use crossbeam_channel::{Receiver, Sender};
 use crossbeam_utils::atomic::AtomicCell;
 use datacake_crdt::{HLCTimestamp, StateChanges};
@@ -26,7 +25,6 @@ use crate::keyspace::{
 };
 use crate::replication::{MembershipChanges, MAX_CONCURRENT_REQUESTS};
 use crate::rpc::ReplicationClient;
-use crate::storage::ProgressWatcher;
 use crate::{Clock, ProgressTracker, PutContext, RpcNetwork, Storage};
 
 const INITIAL_KEYSPACE_WAIT: Duration = if cfg!(any(test, feature = "test-utils")) {
@@ -35,7 +33,7 @@ const INITIAL_KEYSPACE_WAIT: Duration = if cfg!(any(test, feature = "test-utils"
     Duration::from_secs(30)
 };
 const KEYSPACE_SYNC_TIMEOUT: Duration = if cfg!(test) {
-    Duration::from_secs(1)
+    Duration::from_secs(2)
 } else {
     Duration::from_secs(5)
 };
@@ -210,7 +208,7 @@ async fn read_repair_members<S>(
             Ok(info) => info,
         };
 
-        for change in info.changes {
+        for (idx, change) in info.changes.into_iter().enumerate() {
             let res = begin_keyspace_sync(
                 ctx,
                 change.keyspace.clone(),
@@ -227,6 +225,7 @@ async fn read_repair_members<S>(
                     keyspace = %change.keyspace,
                     target_node_id = %node_id,
                     target_node_addr = %addr,
+                    index = %idx,
                     "Failed to sync with node."
                 );
             } else {
@@ -396,7 +395,7 @@ where
         progress: progress_tracker.clone(),
         remote_node_id: Cow::Owned(target_node_id.clone()),
         remote_addr: target_rpc_addr,
-        remote_rpc_channel: channel.clone(),
+        remote_rpc_channel: channel,
     };
 
     // The removal task can operate interdependently of the modified handler.
@@ -406,22 +405,27 @@ where
 
     let res = tokio::spawn(handle_modified(client, keyspace, modified, ctx));
 
-    let mut watcher = ProgressWatcher::new(progress_tracker, KEYSPACE_SYNC_TIMEOUT);
-    let mut interval = interval(Duration::from_millis(250));
+    // this seems to be basically useless as it doesnt currently do anything
+    // instead lets just sleep for the KEYSPACE_SYNC_TIMEOUT
+    //let mut watcher = ProgressWatcher::new(progress_tracker, KEYSPACE_SYNC_TIMEOUT);
+    /*let mut interval = interval(Duration::from_millis(1000));
     loop {
         interval.tick().await;
-
         if watcher.has_expired() {
             res.abort();
             removal_task.await??;
-            return Err(anyhow!("Task timed out and could not be completed."));
+            //return Err(anyhow!("Task timed out and could not be completed."));
+            // the timeout isn't necessarily problematic since it usually means there was nothing to sync
+            return Ok(());
         }
 
         if watcher.is_done() {
             break;
         }
-    }
+    }*/
 
+    tokio::time::sleep(KEYSPACE_SYNC_TIMEOUT).await;
+    res.abort();
     removal_task.await??;
 
     Ok(())

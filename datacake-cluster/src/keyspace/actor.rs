@@ -30,7 +30,6 @@ where
         state,
         change_timestamp,
     };
-
     ks.spawn_actor_with_name(name).await
 }
 

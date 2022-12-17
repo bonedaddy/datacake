@@ -2,3 +2,6 @@
 **/Cargo.lock
 /data
 /.idea
+replicated-kv
+
+my-data/

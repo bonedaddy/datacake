@@ -25,7 +25,7 @@ members = [
     "datacake-cluster",
     "datacake-crdt",
     "datacake-sqlite",
-
+    "datacake-sled",
     # Example set
     "examples/replicated-kv",
 ]

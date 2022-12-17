@@ -40,7 +40,7 @@ pub use nodes_selector::{
 };
 pub use rpc::ServiceRegistry;
 pub use statistics::ClusterStatistics;
-#[cfg(feature = "test-utils")]
+#[cfg(any(test, feature = "test-utils"))]
 pub use storage::test_suite;
 pub use storage::{BulkMutationError, ProgressTracker, PutContext, Storage};
 use tokio_stream::wrappers::WatchStream;

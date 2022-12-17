@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate tracing;
 
+pub mod node_identifier;
 mod clock;
 mod core;
 pub mod error;
@@ -15,7 +16,7 @@ mod storage;
 pub mod test_utils;
 
 use std::borrow::Cow;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Display;
 use std::future::Future;
 use std::marker::PhantomData;
@@ -32,11 +33,7 @@ use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use itertools::Itertools;
 pub use nodes_selector::{
-    Consistency,
-    ConsistencyError,
-    DCAwareSelector,
-    NodeSelector,
-    NodeSelectorHandle,
+    Consistency, ConsistencyError, DCAwareSelector, NodeSelector, NodeSelectorHandle,
 };
 pub use rpc::ServiceRegistry;
 pub use statistics::ClusterStatistics;
@@ -49,28 +46,15 @@ use tokio_stream::wrappers::WatchStream;
 pub use self::core::Document;
 use crate::clock::Clock;
 use crate::keyspace::{
-    Del,
-    KeyspaceGroup,
-    MultiDel,
-    MultiSet,
-    Set,
-    CONSISTENCY_SOURCE_ID,
+    Del, KeyspaceGroup, MultiDel, MultiSet, Set, CONSISTENCY_SOURCE_ID,
 };
 use crate::node::{ClusterMember, DatacakeNode};
 use crate::replication::{
-    MembershipChanges,
-    Mutation,
-    ReplicationCycleContext,
-    ReplicationHandle,
-    TaskDistributor,
-    TaskServiceContext,
+    MembershipChanges, Mutation, ReplicationCycleContext, ReplicationHandle,
+    TaskDistributor, TaskServiceContext,
 };
 use crate::rpc::{
-    ConsistencyClient,
-    Context,
-    DefaultRegistry,
-    GrpcTransport,
-    RpcNetwork,
+    ConsistencyClient, Context, DefaultRegistry, GrpcTransport, RpcNetwork,
     TIMEOUT_LIMIT,
 };
 
@@ -250,7 +234,8 @@ where
     {
         let node_id_public_key = node_id.to_public();
 
-        let clock = Clock::new(crc32fast::hash(node_id_public_key.to_string().as_bytes()));
+        let clock =
+            Clock::new(crc32fast::hash(node_id_public_key.to_string().as_bytes()));
         let storage = Arc::new(datastore);
 
         let group = KeyspaceGroup::new(storage.clone(), clock.clone()).await;
@@ -495,6 +480,11 @@ where
             .await
             .map_err(error::DatacakeError::ConsistencyError)?;
 
+        let mut node_map = HashMap::with_capacity(64);
+        nodes.iter().for_each(|(id, node)| {
+            node_map.insert(node.clone(), id.clone());
+        });
+
         let node_id = self.node_id.clone();
         let node_addr = self.public_addr;
         let last_updated = self.clock.get_time().await;
@@ -515,7 +505,15 @@ where
             doc: document.clone(),
         });
 
-        let factory = |(node_id, node)| {
+        let factory = |node| {
+            let node_id = if let Some(id) = node_map.get(&node) {
+                id.clone()
+            } else {
+                panic!(
+                    "failed to find node_id in node_map for {}",
+                    node.to_string()
+                );
+            };
             let clock = self.group.clock().clone();
             let keyspace = keyspace.name().to_string();
             let document = document.clone();
@@ -523,7 +521,7 @@ where
             async move {
                 let channel = self
                     .network
-                    .get_or_connect(Some(node_id.clone()),node)
+                    .get_or_connect(Some(node_id.clone()), node)
                     .await
                     .map_err(|e| error::DatacakeError::TransportError(node, e))?;
 
@@ -559,6 +557,11 @@ where
             .await
             .map_err(error::DatacakeError::ConsistencyError)?;
 
+        let mut node_map = HashMap::with_capacity(64);
+        nodes.iter().for_each(|(id, node)| {
+            node_map.insert(node.clone(), id.clone());
+        });
+
         let node_id = self.node_id.clone();
         let node_addr = self.public_addr;
         let last_updated = self.clock.get_time().await;
@@ -582,16 +585,23 @@ where
             docs: docs.clone(),
         });
 
-        let factory = |(node_id , node)| {
+        let factory = |node| {
+            let node_id = if let Some(id) = node_map.get(&node) {
+                id.clone()
+            } else {
+                panic!(
+                    "failed to find node_id in node_map for {}",
+                    node.to_string()
+                );
+            };
             let clock = self.group.clock().clone();
             let keyspace = keyspace.name().to_string();
             let documents = docs.clone();
             let node_id: String = node_id;
-            let node_addr = node_addr;
             async move {
                 let channel = self
                     .network
-                    .get_or_connect(Some(node_id.clone()),node)
+                    .get_or_connect(Some(node_id.clone()), node)
                     .await
                     .map_err(|e| error::DatacakeError::TransportError(node, e))?;
 
@@ -622,6 +632,11 @@ where
             .await
             .map_err(error::DatacakeError::ConsistencyError)?;
 
+        let mut node_map = HashMap::with_capacity(64);
+        nodes.iter().for_each(|(id, node)| {
+            node_map.insert(node.clone(), id.clone());
+        });
+
         let last_updated = self.clock.get_time().await;
 
         let keyspace = self.group.get_or_create_keyspace(keyspace).await;
@@ -640,7 +655,15 @@ where
             ts: last_updated,
         });
 
-        let factory = |(node_id, node)| {
+        let factory = |node| {
+            let node_id = if let Some(id) = node_map.get(&node) {
+                id.clone()
+            } else {
+                panic!(
+                    "failed to find node_id in node_map for {}",
+                    node.to_string()
+                );
+            };
             let clock = self.group.clock().clone();
             let keyspace = keyspace.name().to_string();
             async move {
@@ -680,6 +703,10 @@ where
             .get_nodes(consistency)
             .await
             .map_err(error::DatacakeError::ConsistencyError)?;
+        let mut node_map = HashMap::with_capacity(64);
+        nodes.iter().for_each(|(id, node)| {
+            node_map.insert(node.clone(), id.clone());
+        });
 
         let last_updated = self.clock.get_time().await;
         let docs = doc_ids
@@ -701,7 +728,15 @@ where
             docs: docs.clone(),
         });
 
-        let factory = |(node_id, node)| {
+        let factory = |node| {
+            let node_id = if let Some(id) = node_map.get(&node) {
+                id.clone()
+            } else {
+                panic!(
+                    "failed to find node_id in node_map for {}",
+                    node.to_string()
+                );
+            };
             let clock = self.group.clock().clone();
             let keyspace = keyspace.name().to_string();
             let docs = docs.clone();
@@ -856,8 +891,11 @@ where
     };
     let transport = GrpcTransport::new(context, chitchat_rx);
 
-    let me =
-        ClusterMember::new(node_id.to_public(), cluster_info.public_addr, cluster_info.data_center);
+    let me = ClusterMember::new(
+        node_id.to_public(),
+        cluster_info.public_addr,
+        cluster_info.data_center,
+    );
     let node = DatacakeNode::connect(
         me,
         cluster_info.listen_addr,
@@ -922,10 +960,14 @@ async fn watch_membership_changes(
             .collect::<HashSet<_>>();
 
         {
-            let mut data_centers = BTreeMap::<Cow<'static, str>, Vec<(String, SocketAddr)>>::new();
+            let mut data_centers =
+                BTreeMap::<Cow<'static, str>, Vec<(String, SocketAddr)>>::new();
             for member in members.iter() {
                 let dc = Cow::Owned(member.data_center.clone());
-                data_centers.entry(dc).or_default().push((member.node_id.clone(), member.public_addr));
+                data_centers
+                    .entry(dc)
+                    .or_default()
+                    .push((member.node_id.clone(), member.public_addr));
             }
 
             statistics
@@ -975,18 +1017,44 @@ async fn handle_consistency_distribution<S, CB, F>(
 ) -> Result<(), error::DatacakeError<S::Error>>
 where
     S: Storage,
-    CB: FnMut((String, SocketAddr)) -> F,
+    CB: FnMut(SocketAddr) -> F,
     F: Future<Output = Result<(), error::DatacakeError<S::Error>>>,
 {
     let mut num_success = 0;
     let num_required = nodes.len();
-    while let Some((_, _)) = tokio_stream::iter(nodes
-        .iter()
-        .map(|(node_id, node)| {
-            (node_id.clone(), node.clone())
-        })
-        .collect::<Vec<_>>()).next().await {
-        num_success += 1;
+
+    let mut requests = nodes
+        .into_iter()
+        .map(|(_, node)| node)
+        .map(factory)
+        .collect::<FuturesUnordered<_>>();
+
+    while let Some(res) = requests.next().await {
+        match res {
+            Ok(()) => {
+                num_success += 1;
+            },
+            Err(error::DatacakeError::RpcError(node, error)) => {
+                error!(
+                    error = ?error,
+                    target_node = %node,
+                    "Replica failed to acknowledge change to meet consistency level requirement."
+                );
+            },
+            Err(error::DatacakeError::TransportError(node, error)) => {
+                error!(
+                    error = ?error,
+                    target_node = %node,
+                    "Replica failed to acknowledge change to meet consistency level requirement."
+                );
+            },
+            Err(other) => {
+                error!(
+                    error = ?other,
+                    "Failed to send action to replica due to unknown error.",
+                );
+            },
+        }
     }
 
     if num_success != num_required {

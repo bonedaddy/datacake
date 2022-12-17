@@ -708,15 +708,33 @@ async fn connect_cluster(
     .expect("Connect node.");
 
     node_1
-        .wait_for_nodes(&[&node_2_id.to_public().to_string(), &node_3_id.to_public().to_string()], Duration::from_secs(30))
+        .wait_for_nodes(
+            &[
+                &node_2_id.to_public().to_string(),
+                &node_3_id.to_public().to_string(),
+            ],
+            Duration::from_secs(30),
+        )
         .await
         .expect("Nodes should connect within timeout.");
     node_2
-        .wait_for_nodes(&[&node_3_id.to_public().to_string(), &node_1_id.to_public().to_string()], Duration::from_secs(30))
+        .wait_for_nodes(
+            &[
+                &node_3_id.to_public().to_string(),
+                &node_1_id.to_public().to_string(),
+            ],
+            Duration::from_secs(30),
+        )
         .await
         .expect("Nodes should connect within timeout.");
     node_3
-        .wait_for_nodes(&[&node_2_id.to_public().to_string(), &node_1_id.to_public().to_string()], Duration::from_secs(30))
+        .wait_for_nodes(
+            &[
+                &node_2_id.to_public().to_string(),
+                &node_1_id.to_public().to_string(),
+            ],
+            Duration::from_secs(30),
+        )
         .await
         .expect("Nodes should connect within timeout.");
 
@@ -805,15 +823,33 @@ async fn connect_sled_cluster(
     .expect("Connect node.");
 
     node_1
-        .wait_for_nodes(&[ &node_2_id.to_public().to_string(),  &node_3_id.to_public().to_string()], Duration::from_secs(30))
+        .wait_for_nodes(
+            &[
+                &node_2_id.to_public().to_string(),
+                &node_3_id.to_public().to_string(),
+            ],
+            Duration::from_secs(30),
+        )
         .await
         .expect("Nodes should connect within timeout.");
     node_2
-        .wait_for_nodes(&[ &node_3_id.to_public().to_string(),  &node_1_id.to_public().to_string()], Duration::from_secs(30))
+        .wait_for_nodes(
+            &[
+                &node_3_id.to_public().to_string(),
+                &node_1_id.to_public().to_string(),
+            ],
+            Duration::from_secs(30),
+        )
         .await
         .expect("Nodes should connect within timeout.");
     node_3
-        .wait_for_nodes(&[ &node_2_id.to_public().to_string(),  &node_1_id.to_public().to_string()], Duration::from_secs(30))
+        .wait_for_nodes(
+            &[
+                &node_2_id.to_public().to_string(),
+                &node_1_id.to_public().to_string(),
+            ],
+            Duration::from_secs(30),
+        )
         .await
         .expect("Nodes should connect within timeout.");
 

@@ -10,6 +10,7 @@ use datacake_crdt::{HLCTimestamp, Key};
 use tonic::transport::Channel;
 
 use crate::core::Document;
+use crate::node_identifier::NodeID;
 
 #[derive(Debug)]
 /// A utility for tracking the progress a task has made.
@@ -89,7 +90,7 @@ pub struct PutContext {
     pub(crate) progress: ProgressTracker,
 
     // Info relating to the remote node.
-    pub(crate) remote_node_id: Cow<'static, str>,
+    pub(crate) remote_node_id: NodeID,
     pub(crate) remote_addr: SocketAddr,
     pub(crate) remote_rpc_channel: Channel,
 }
@@ -106,8 +107,8 @@ impl PutContext {
 
     #[inline]
     /// The unique ID of the remote node.
-    pub fn remote_node_id(&self) -> &str {
-        self.remote_node_id.as_ref()
+    pub fn remote_node_id(&self) -> NodeID {
+        self.remote_node_id
     }
 
     #[inline]

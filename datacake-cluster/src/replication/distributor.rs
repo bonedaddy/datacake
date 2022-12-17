@@ -10,6 +10,7 @@ use datacake_crdt::{HLCTimestamp, Key, StateChanges};
 use tokio::sync::Semaphore;
 use tokio::time::{interval, MissedTickBehavior};
 
+use crate::node_identifier::NodeID;
 use crate::replication::{MembershipChanges, MAX_CONCURRENT_REQUESTS};
 use crate::rpc::datacake_api;
 use crate::rpc::datacake_api::Context;
@@ -121,7 +122,7 @@ async fn task_distributor_service(
             match task {
                 Op::MembershipChange(changes) => {
                     for node_id in changes.left {
-                        live_members.remove(node_id.as_ref());
+                        live_members.remove(&node_id);
                     }
 
                     for (node_id, addr) in changes.joined {
@@ -207,7 +208,7 @@ fn register_mutation(
 
 async fn execute_batch(
     ctx: &TaskServiceContext,
-    live_members: &BTreeMap<Cow<'static, str>, SocketAddr>,
+    live_members: &BTreeMap<NodeID, SocketAddr>,
     batch: datacake_api::BatchPayload,
 ) -> anyhow::Result<()> {
     let limiter = Arc::new(Semaphore::new(MAX_CONCURRENT_REQUESTS));
@@ -216,7 +217,7 @@ async fn execute_batch(
         let node_id = node_id.clone();
         let limiter = limiter.clone();
         let batch = batch.clone();
-        let channel = ctx.network.get_or_connect_lazy(Some(node_id.to_string()), addr);
+        let channel = ctx.network.get_or_connect_lazy(Some(node_id), addr);
         let mut client = ConsistencyClient::new(ctx.clock.clone(), channel);
 
         let task = tokio::spawn(async move {
@@ -232,7 +233,7 @@ async fn execute_batch(
         if let Err(e) = res {
             error!(
                 error = ?e,
-                target_node_id = %node_id,
+                target_node_id = %node_id.to_string(),
                 target_addr = %addr,
                 "Failed to synchronise node with batch events. This will resolved when the next replication cycle occurs.",
             );

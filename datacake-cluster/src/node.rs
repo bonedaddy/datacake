@@ -20,6 +20,7 @@ use tokio_stream::wrappers::WatchStream;
 use tokio_stream::StreamExt;
 
 use crate::error::DatacakeError;
+use crate::node_identifier::{NodeIdentifier, NodeID};
 use crate::{ClusterStatistics, DEFAULT_DATA_CENTER};
 
 static DATA_CENTER_KEY: &str = "data_center";
@@ -29,12 +30,12 @@ const GOSSIP_INTERVAL: Duration = if cfg!(test) {
     Duration::from_secs(1)
 };
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct ClusterMember {
     /// A unique ID for the given node in the cluster.
     /// 
     /// this is the node's age public key
-    pub node_id: String,
+    pub node_id: NodeID,
     /// The public address of the nod.
     pub public_addr: SocketAddr,
     /// The data center / availability zone the node is in.
@@ -50,14 +51,15 @@ impl ClusterMember {
         data_center: impl Into<String>,
     ) -> Self {
         Self {
-            node_id: node_id.to_string(),
+            node_id: node_id.into(),
             public_addr,
             data_center: data_center.into(),
         }
     }
 
     pub fn chitchat_id(&self) -> String {
-        self.node_id.clone()
+        // wont ever fail
+        self.node_id.to_string()
     }
 }
 
@@ -71,7 +73,7 @@ pub struct DatacakeNode {
     /// The ID of the cluster this node belongs to.
     pub cluster_id: String,
     /// The ID of the current node.
-    pub node_id: String,
+    pub node_id: NodeID,
     /// The public address of the node.
     pub public_addr: SocketAddr,
 
@@ -95,13 +97,12 @@ impl DatacakeNode {
     {
         info!(
             cluster_id = %cluster_id,
-            node_id = %me.node_id,
+            node_id = %me.node_id.to_string(),
             public_addr = %me.public_addr,
             listen_gossip_addr = %listen_addr,
             peer_seed_addrs = %seed_nodes.join(", "),
             "Joining cluster."
         );
-
         let cfg = ChitchatConfig {
             node_id: NodeId::from(me.clone()),
             cluster_id: cluster_id.clone(),
@@ -125,7 +126,7 @@ impl DatacakeNode {
 
         let cluster = DatacakeNode {
             cluster_id,
-            node_id: me.chitchat_id(),
+            node_id: me.node_id,
             public_addr: me.public_addr,
             chitchat_handle,
             members: members_rx,
@@ -361,3 +362,12 @@ mod tests {
 }
 
 
+impl std::fmt::Debug for ClusterMember {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ClusterMember")
+        .field("node_id", &self.chitchat_id())
+        .field("public_addr", &self.public_addr)
+        .field("data_center", &self.data_center)
+        .finish()
+    }
+}

@@ -21,6 +21,7 @@ use std::fmt::Display;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::net::SocketAddr;
+use std::str::FromStr;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
@@ -49,6 +50,7 @@ use crate::keyspace::{
     Del, KeyspaceGroup, MultiDel, MultiSet, Set, CONSISTENCY_SOURCE_ID,
 };
 use crate::node::{ClusterMember, DatacakeNode};
+use crate::node_identifier::NodeID;
 use crate::replication::{
     MembershipChanges, Mutation, ReplicationCycleContext, ReplicationHandle,
     TaskDistributor, TaskServiceContext,
@@ -334,7 +336,7 @@ where
     /// Changes applied to the handle are distributed across the cluster.
     pub fn handle(&self) -> DatacakeHandle<S> {
         DatacakeHandle {
-            node_id: Cow::Owned(self.node.node_id.clone()),
+            node_id: self.node.node_id,
             public_addr: self.node.public_addr,
             network: self.network.clone(),
             group: self.group.clone(),
@@ -370,8 +372,8 @@ where
                     node_ids.iter().all(|node| {
                         members
                             .iter()
-                            .map(|m| m.node_id.as_str())
-                            .contains(&node.as_ref())
+                            .map(|m| m.node_id.to_string())
+                            .contains(&node.as_ref().to_string())
                     })
                 },
                 timeout,
@@ -385,7 +387,7 @@ pub struct DatacakeHandle<S>
 where
     S: Storage + Send + Sync + 'static,
 {
-    node_id: Cow<'static, str>,
+    node_id: NodeID,
     public_addr: SocketAddr,
     network: RpcNetwork,
     group: KeyspaceGroup<S>,
@@ -517,18 +519,17 @@ where
             let clock = self.group.clock().clone();
             let keyspace = keyspace.name().to_string();
             let document = document.clone();
-            let node_id: String = node_id;
             async move {
                 let channel = self
                     .network
-                    .get_or_connect(Some(node_id.clone()), node)
+                    .get_or_connect(Some(node_id), node)
                     .await
                     .map_err(|e| error::DatacakeError::TransportError(node, e))?;
 
                 let mut client = ConsistencyClient::new(clock, channel);
 
                 client
-                    .put(keyspace, document, &node_id, node_addr)
+                    .put(keyspace, document, node_id, node_addr)
                     .await
                     .map_err(|e| error::DatacakeError::RpcError(node, e))?;
 
@@ -597,18 +598,17 @@ where
             let clock = self.group.clock().clone();
             let keyspace = keyspace.name().to_string();
             let documents = docs.clone();
-            let node_id: String = node_id;
             async move {
                 let channel = self
                     .network
-                    .get_or_connect(Some(node_id.clone()), node)
+                    .get_or_connect(Some(node_id), node)
                     .await
                     .map_err(|e| error::DatacakeError::TransportError(node, e))?;
 
                 let mut client = ConsistencyClient::new(clock, channel);
 
                 client
-                    .multi_put(keyspace, documents.into_iter(), &node_id, node_addr)
+                    .multi_put(keyspace, documents.into_iter(), node_id, node_addr)
                     .await
                     .map_err(|e| error::DatacakeError::RpcError(node, e))?;
 
@@ -921,9 +921,8 @@ async fn setup_poller(
     statistics: ClusterStatistics,
 ) {
     let changes = node.member_change_watcher();
-    let self_node_id = Cow::Owned(node.node_id.clone());
     tokio::spawn(watch_membership_changes(
-        self_node_id,
+        node.node_id,
         task_service,
         repair_service,
         network,
@@ -937,7 +936,7 @@ async fn setup_poller(
 ///
 /// When nodes leave and join, pollers are stopped and started as required.
 async fn watch_membership_changes(
-    self_node_id: Cow<'static, str>,
+    self_node_id: NodeID,
     task_service: TaskDistributor,
     repair_service: ReplicationHandle,
     network: RpcNetwork,
@@ -948,26 +947,28 @@ async fn watch_membership_changes(
     let mut last_network_set = HashSet::new();
     while let Some(members) = changes.next().await {
         info!(
-            self_node_id = %self_node_id,
+            self_node_id = %self_node_id.to_string(),
             num_members = members.len(),
             "Cluster membership has changed."
         );
 
         let new_network_set = members
             .iter()
-            .filter(|member| member.node_id != self_node_id.as_ref())
+            .filter(|member| {
+                member.node_id != self_node_id
+            })
             .map(|member| (member.node_id.clone(), member.public_addr))
             .collect::<HashSet<_>>();
 
         {
             let mut data_centers =
-                BTreeMap::<Cow<'static, str>, Vec<(String, SocketAddr)>>::new();
+                BTreeMap::<Cow<'static, str>, Vec<(NodeID, SocketAddr)>>::new();
             for member in members.iter() {
                 let dc = Cow::Owned(member.data_center.clone());
                 data_centers
                     .entry(dc)
                     .or_default()
-                    .push((member.node_id.clone(), member.public_addr));
+                    .push((member.node_id, member.public_addr));
             }
 
             statistics
@@ -980,28 +981,28 @@ async fn watch_membership_changes(
         // Remove client no longer apart of the network.
         for (node_id, addr) in last_network_set.difference(&new_network_set) {
             info!(
-                self_node_id = %self_node_id,
-                target_node_id = %node_id,
+                self_node_id = %self_node_id.to_string(),
+                target_node_id = %node_id.to_string(),
                 target_addr = %addr,
                 "Node is no longer part of cluster."
             );
 
             network.disconnect(*addr);
-            membership_changes.left.push(Cow::Owned(node_id.clone()));
+            membership_changes.left.push(*node_id);
         }
 
         // Add new clients for each new node.
         for (node_id, addr) in new_network_set.difference(&last_network_set) {
             info!(
-                self_node_id = %self_node_id,
-                target_node_id = %node_id,
+                self_node_id = %self_node_id.to_string(),
+                target_node_id = %node_id.to_string(),
                 target_addr = %addr,
                 "Node has connected to the cluster."
             );
 
             membership_changes
                 .joined
-                .push((Cow::Owned(node_id.clone()), *addr));
+                .push((*node_id, *addr));
         }
 
         task_service.membership_change(membership_changes.clone());
@@ -1012,7 +1013,7 @@ async fn watch_membership_changes(
 }
 
 async fn handle_consistency_distribution<S, CB, F>(
-    nodes: Vec<(String, SocketAddr)>,
+    nodes: Vec<(NodeID, SocketAddr)>,
     factory: CB,
 ) -> Result<(), error::DatacakeError<S::Error>>
 where

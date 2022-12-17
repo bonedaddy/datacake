@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::net::SocketAddr;
+use std::str::FromStr;
 
 use async_trait::async_trait;
 use datacake_crdt::HLCTimestamp;
@@ -8,6 +9,7 @@ use tonic::{Request, Response, Status};
 
 use crate::core::Document;
 use crate::keyspace::{KeyspaceGroup, CONSISTENCY_SOURCE_ID};
+use crate::node_identifier::NodeID;
 use crate::rpc::datacake_api;
 use crate::rpc::datacake_api::consistency_api_server::ConsistencyApi;
 use crate::rpc::datacake_api::{
@@ -45,12 +47,15 @@ where
                     info.node_addr, e
                 ))
             })?;
-
-            let remote_rpc_channel = self.network.get_or_connect_lazy(Some(info.node_id.clone()), remote_addr);
+            let nid: NodeID = match FromStr::from_str(&info.node_id) {
+                Ok(nid) => nid,
+                Err(err) => return Err(Status::internal(format!("{:#?}", err))),
+            };
+            let remote_rpc_channel = self.network.get_or_connect_lazy(Some(nid), remote_addr);
 
             Some(PutContext {
                 progress: ProgressTracker::default(),
-                remote_node_id: Cow::Owned(info.node_id),
+                remote_node_id: nid,
                 remote_addr,
                 remote_rpc_channel,
             })

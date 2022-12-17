@@ -6,6 +6,8 @@ use std::time::{Duration, Instant};
 
 use tokio::sync::oneshot;
 
+use crate::node_identifier::NodeID;
+
 const NODE_CACHE_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Starts the node selector actor with a given node selector implementation.
@@ -24,7 +26,7 @@ where
     tokio::spawn(async move {
         let mut total_nodes = 0;
         let mut data_centers = BTreeMap::new();
-        let mut cached_nodes = HashMap::<Consistency, (Instant, Vec<(String, SocketAddr)>)>::new();
+        let mut cached_nodes = HashMap::<Consistency, (Instant, Vec<(NodeID, SocketAddr)>)>::new();
 
         while let Ok(op) = rx.recv_async().await {
             match op {
@@ -90,7 +92,7 @@ impl NodeSelectorHandle {
     /// Set the nodes which can be used by the selector.
     pub async fn set_nodes(
         &self,
-        data_centers: BTreeMap<Cow<'static, str>, Vec<(String, SocketAddr)>>,
+        data_centers: BTreeMap::<Cow<'static, str>, Vec<(NodeID, SocketAddr)>>,
     ) {
         self.tx
             .send_async(Op::SetNodes { data_centers })
@@ -105,7 +107,7 @@ impl NodeSelectorHandle {
     pub async fn get_nodes(
         &self,
         consistency: Consistency,
-    ) -> Result<Vec<(String, SocketAddr)>, ConsistencyError> {
+    ) -> Result<Vec<(NodeID, SocketAddr)>, ConsistencyError> {
         let (tx, rx) = oneshot::channel();
 
         self.tx
@@ -119,11 +121,11 @@ impl NodeSelectorHandle {
 
 enum Op {
     SetNodes {
-        data_centers: BTreeMap<Cow<'static, str>, Vec<(String, SocketAddr)>>,
+        data_centers: BTreeMap::<Cow<'static, str>, Vec<(NodeID, SocketAddr)>>,
     },
     GetNodes {
         consistency: Consistency,
-        tx: oneshot::Sender<Result<Vec<(String, SocketAddr)>, ConsistencyError>>,
+        tx: oneshot::Sender<Result<Vec<(NodeID, SocketAddr)>, ConsistencyError>>,
     },
 }
 
@@ -202,7 +204,7 @@ pub trait NodeSelector {
         total_nodes: usize,
         data_centers: &mut BTreeMap<Cow<'static, str>, NodeCycler>,
         consistency: Consistency,
-    ) -> Result<Vec<(String, SocketAddr)>, ConsistencyError>;
+    ) -> Result<Vec<(NodeID, SocketAddr)>, ConsistencyError>;
 }
 
 #[derive(Debug, Copy, Clone, Default)]
@@ -223,7 +225,7 @@ impl NodeSelector for DCAwareSelector {
         total_nodes: usize,
         data_centers: &mut BTreeMap<Cow<'static, str>, NodeCycler>,
         consistency: Consistency,
-    ) -> Result<Vec<(String, SocketAddr)>, ConsistencyError> {
+    ) -> Result<Vec<(NodeID, SocketAddr)>, ConsistencyError> {
         let mut selected_nodes = Vec::new();
 
         match consistency {
@@ -376,7 +378,7 @@ fn select_n_nodes(
     n: usize,
     total_nodes: usize,
     data_centers: &mut BTreeMap<Cow<'static, str>, NodeCycler>,
-) -> Result<Vec<(String, SocketAddr)>, ConsistencyError> {
+) -> Result<Vec<(NodeID, SocketAddr)>, ConsistencyError> {
     use rand::seq::IteratorRandom;
     let mut rng = rand::thread_rng();
 
@@ -472,22 +474,22 @@ fn select_n_nodes(
 #[derive(Debug)]
 pub struct NodeCycler {
     cursor: usize,
-    nodes: Vec<(String, SocketAddr)>,
+    nodes: Vec<(NodeID, SocketAddr)>,
 }
 
 impl NodeCycler {
     /// Extends the set of nodes for the cycler.
-    pub fn extend(&mut self, iter: impl Iterator<Item = (String, SocketAddr)>) {
+    pub fn extend(&mut self, iter: impl Iterator<Item = (NodeID, SocketAddr)>) {
         self.nodes.extend(iter);
     }
 
     /// Gets a mutable reference to the inner nodes buffer.
-    pub fn get_nodes_mut(&mut self) -> &mut Vec<(String, SocketAddr)> {
+    pub fn get_nodes_mut(&mut self) -> &mut Vec<(NodeID, SocketAddr)> {
         &mut self.nodes
     }
 
     /// Gets a immutable reference to the inner nodes buffer.
-    pub fn get_nodes(&self) -> &Vec<(String, SocketAddr)> {
+    pub fn get_nodes(&self) -> &Vec<(NodeID, SocketAddr)> {
         &self.nodes
     }
 
@@ -498,14 +500,14 @@ impl NodeCycler {
     }
 }
 
-impl From<Vec<(String, SocketAddr)>> for NodeCycler {
-    fn from(nodes: Vec<(String, SocketAddr)>) -> Self {
+impl From<Vec<(NodeID, SocketAddr)>> for NodeCycler {
+    fn from(nodes: Vec<(NodeID, SocketAddr)>) -> Self {
         Self { cursor: 0, nodes }
     }
 }
 
 impl Iterator for NodeCycler {
-    type Item = (String, SocketAddr);
+    type Item = (NodeID, SocketAddr);
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.cursor >= self.nodes.len() {
@@ -527,6 +529,7 @@ mod tests {
     use std::fmt::Display;
     use std::net::{IpAddr, SocketAddr};
 
+    use crate::node_identifier::NodeIdentifier;
     use crate::nodes_selector::{
         select_n_nodes,
         Consistency,
@@ -691,7 +694,7 @@ mod tests {
             for i in 0..num_nodes {
                 let addr = make_addr(dc_n as u8, i as u8);
                 // todo: decide how to set the node name here
-                nodes.push((age::x25519::Identity::generate().to_public().to_string(), addr));
+                nodes.push((NodeIdentifier::new(age::x25519::Identity::generate()).unwrap().node_id(), addr));
             }
 
             dc.insert(name, NodeCycler::from(nodes));

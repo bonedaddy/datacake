@@ -17,12 +17,12 @@ static KEYSPACE_3: &str = "my-third-keyspace";
 #[tokio::test]
 async fn test_single_node() -> anyhow::Result<()> {
     let _ = tracing_subscriber::fmt::try_init();
-
+    let node_1_id = age::x25519::Identity::generate();
     let node_addr = "127.0.0.1:8014".parse::<SocketAddr>().unwrap();
     let connection_cfg =
         ConnectionConfig::new(node_addr, node_addr, Vec::<String>::new());
     let node = DatacakeCluster::connect(
-        "node-1",
+        node_1_id.clone(),
         connection_cfg,
         InstrumentedStorage(MemStore::default()),
         DCAwareSelector::default(),
@@ -71,7 +71,9 @@ async fn test_single_node() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_multi_node() -> anyhow::Result<()> {
     let _ = tracing_subscriber::fmt::try_init();
-
+    let node_1_id = age::x25519::Identity::generate();
+    let node_2_id = age::x25519::Identity::generate();
+    let node_3_id = age::x25519::Identity::generate();
     let node_1_addr = "127.0.0.1:8015".parse::<SocketAddr>().unwrap();
     let node_2_addr = "127.0.0.1:8016".parse::<SocketAddr>().unwrap();
     let node_3_addr = "127.0.0.1:8017".parse::<SocketAddr>().unwrap();
@@ -92,7 +94,7 @@ async fn test_multi_node() -> anyhow::Result<()> {
     );
 
     let node_1 = DatacakeCluster::connect(
-        "node-1",
+        node_1_id.clone(),
         node_1_connection_cfg,
         InstrumentedStorage(MemStore::default()),
         DCAwareSelector::default(),
@@ -101,7 +103,7 @@ async fn test_multi_node() -> anyhow::Result<()> {
     .await
     .expect("Connect node.");
     let node_2 = DatacakeCluster::connect(
-        "node-2",
+        node_2_id.clone(),
         node_2_connection_cfg,
         InstrumentedStorage(MemStore::default()),
         DCAwareSelector::default(),
@@ -110,7 +112,7 @@ async fn test_multi_node() -> anyhow::Result<()> {
     .await
     .expect("Connect node.");
     let node_3 = DatacakeCluster::connect(
-        "node-3",
+        node_3_id.clone(),
         node_3_connection_cfg,
         InstrumentedStorage(MemStore::default()),
         DCAwareSelector::default(),
@@ -120,15 +122,15 @@ async fn test_multi_node() -> anyhow::Result<()> {
     .expect("Connect node.");
 
     node_1
-        .wait_for_nodes(&["node-2", "node-3"], Duration::from_secs(30))
+        .wait_for_nodes(&[&node_2_id.to_public().to_string(), &node_3_id.to_public().to_string()], Duration::from_secs(30))
         .await
         .expect("Nodes should connect within timeout.");
     node_2
-        .wait_for_nodes(&["node-3", "node-1"], Duration::from_secs(30))
+        .wait_for_nodes(&[&node_3_id.to_public().to_string(), &node_1_id.to_public().to_string()], Duration::from_secs(30))
         .await
         .expect("Nodes should connect within timeout.");
     node_3
-        .wait_for_nodes(&["node-2", "node-1"], Duration::from_secs(30))
+        .wait_for_nodes(&[&node_2_id.to_public().to_string(), &node_1_id.to_public().to_string()], Duration::from_secs(30))
         .await
         .expect("Nodes should connect within timeout.");
 
@@ -175,7 +177,9 @@ async fn test_multi_node() -> anyhow::Result<()> {
 async fn test_multi_node_sled() -> anyhow::Result<()> {
     use datacake_sled::SledStorage;
     let _ = tracing_subscriber::fmt::try_init();
-
+    let node_1_id = age::x25519::Identity::generate();
+    let node_2_id = age::x25519::Identity::generate();
+    let node_3_id = age::x25519::Identity::generate();
     let node_1_addr = "127.0.0.1:8015".parse::<SocketAddr>().unwrap();
     let node_2_addr = "127.0.0.1:8016".parse::<SocketAddr>().unwrap();
     let node_3_addr = "127.0.0.1:8017".parse::<SocketAddr>().unwrap();
@@ -196,7 +200,7 @@ async fn test_multi_node_sled() -> anyhow::Result<()> {
     );
 
     let node_1 = DatacakeCluster::connect(
-        "node-1",
+        node_1_id.clone(),
         node_1_connection_cfg,
         InstrumentedStorage(SledStorage::open_temporary().unwrap()),
         DCAwareSelector::default(),
@@ -205,7 +209,7 @@ async fn test_multi_node_sled() -> anyhow::Result<()> {
     .await
     .expect("Connect node.");
     let node_2 = DatacakeCluster::connect(
-        "node-2",
+        node_2_id.clone(),
         node_2_connection_cfg,
         InstrumentedStorage(SledStorage::open_temporary().unwrap()),
         DCAwareSelector::default(),
@@ -214,7 +218,7 @@ async fn test_multi_node_sled() -> anyhow::Result<()> {
     .await
     .expect("Connect node.");
     let node_3 = DatacakeCluster::connect(
-        "node-3",
+        node_3_id.clone(),
         node_3_connection_cfg,
         InstrumentedStorage(SledStorage::open_temporary().unwrap()),
         DCAwareSelector::default(),

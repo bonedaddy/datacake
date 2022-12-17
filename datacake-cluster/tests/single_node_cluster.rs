@@ -16,12 +16,12 @@ static KEYSPACE: &str = "my-keyspace";
 #[tokio::test]
 async fn test_single_node_cluster() -> anyhow::Result<()> {
     let _ = tracing_subscriber::fmt::try_init();
-
+    let node_1_id = age::x25519::Identity::generate();
     let addr = "127.0.0.1:8001".parse::<SocketAddr>().unwrap();
     let connection_cfg = ConnectionConfig::new(addr, addr, Vec::<String>::new());
 
     let cluster = DatacakeCluster::connect(
-        "node-1",
+        node_1_id,
         connection_cfg,
         MemStore::default(),
         DCAwareSelector::default(),
@@ -93,11 +93,12 @@ async fn test_single_node_cluster() -> anyhow::Result<()> {
 async fn test_single_node_cluster_with_keyspace_handle() -> anyhow::Result<()> {
     let _ = tracing_subscriber::fmt::try_init();
 
+    let node_1_id = age::x25519::Identity::generate();
     let addr = "127.0.0.1:8002".parse::<SocketAddr>().unwrap();
     let connection_cfg = ConnectionConfig::new(addr, addr, Vec::<String>::new());
 
     let cluster = DatacakeCluster::connect(
-        "node-1",
+        node_1_id,
         connection_cfg,
         MemStore::default(),
         DCAwareSelector::default(),
@@ -167,9 +168,9 @@ async fn test_single_node_cluster_bulk_op() -> anyhow::Result<()> {
 
     let addr = "127.0.0.1:8003".parse::<SocketAddr>().unwrap();
     let connection_cfg = ConnectionConfig::new(addr, addr, Vec::<String>::new());
-
+    let node_1_id = age::x25519::Identity::generate();
     let cluster = DatacakeCluster::connect(
-        "node-1",
+        node_1_id,
         connection_cfg,
         MemStore::default(),
         DCAwareSelector::default(),
@@ -254,9 +255,9 @@ async fn test_single_node_cluster_bulk_op_with_keyspace_handle() -> anyhow::Resu
 
     let addr = "127.0.0.1:8004".parse::<SocketAddr>().unwrap();
     let connection_cfg = ConnectionConfig::new(addr, addr, Vec::<String>::new());
-
+    let node_1_id = age::x25519::Identity::generate();
     let cluster = DatacakeCluster::connect(
-        "node-1",
+        node_1_id,
         connection_cfg,
         MemStore::default(),
         DCAwareSelector::default(),

@@ -15,14 +15,14 @@ static KEYSPACE: &str = "sqlite-store";
 #[tokio::test]
 async fn test_basic_sqlite_cluster() -> Result<()> {
     let _ = tracing_subscriber::fmt::try_init();
-
+    let node_1_id = age::x25519::Identity::generate();
     let store = SqliteStorage::open_in_memory().await?;
 
     let addr = "127.0.0.1:9000".parse::<SocketAddr>().unwrap();
     let connection_cfg = ConnectionConfig::new(addr, addr, Vec::<String>::new());
 
     let cluster = DatacakeCluster::connect(
-        "node-1",
+        node_1_id.clone(),
         connection_cfg,
         store,
         DCAwareSelector::default(),

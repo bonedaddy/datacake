@@ -6,6 +6,7 @@ mod core;
 pub mod error;
 mod keyspace;
 mod node;
+pub mod node_identifier;
 mod nodes_selector;
 mod replication;
 mod rpc;
@@ -15,7 +16,7 @@ mod storage;
 pub mod test_utils;
 
 use std::borrow::Cow;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Display;
 use std::future::Future;
 use std::marker::PhantomData;
@@ -56,6 +57,7 @@ use crate::keyspace::{
     CONSISTENCY_SOURCE_ID,
 };
 use crate::node::{ClusterMember, DatacakeNode};
+use crate::node_identifier::NodeID;
 use crate::replication::{
     MembershipChanges,
     Mutation,
@@ -199,7 +201,7 @@ where
     /// but they are required in order for nodes to discover one-another and share
     /// their basic state.
     pub async fn connect<DS>(
-        node_id: impl Into<String>,
+        node_id: age::x25519::Identity,
         connection_cfg: ConnectionConfig,
         datastore: S,
         node_selector: DS,
@@ -236,7 +238,7 @@ where
     /// but they are required in order for nodes to discover one-another and share
     /// their basic state.
     pub async fn connect_with_registry<DS, R>(
-        node_id: impl Into<String>,
+        node_id: age::x25519::Identity,
         connection_cfg: ConnectionConfig,
         datastore: S,
         node_selector: DS,
@@ -247,9 +249,10 @@ where
         DS: NodeSelector + Send + 'static,
         R: ServiceRegistry + Send + Sync + Clone + 'static,
     {
-        let node_id = node_id.into();
+        let node_id_public_key = node_id.to_public();
 
-        let clock = Clock::new(crc32fast::hash(node_id.as_bytes()));
+        let clock =
+            Clock::new(crc32fast::hash(node_id_public_key.to_string().as_bytes()));
         let storage = Arc::new(datastore);
 
         let group = KeyspaceGroup::new(storage.clone(), clock.clone()).await;
@@ -288,7 +291,7 @@ where
         let task_ctx = TaskServiceContext {
             clock: group.clock().clone(),
             network: network.clone(),
-            local_node_id: Cow::Owned(node_id.clone()),
+            local_node_id: node_id_public_key.clone().into(),
             public_node_addr: node.public_addr,
         };
         let replication_ctx = ReplicationCycleContext {
@@ -310,7 +313,7 @@ where
         .await;
 
         info!(
-            node_id = %node_id,
+            node_id = %node_id_public_key,
             cluster_id = %options.cluster_id,
             listen_addr = %connection_cfg.listen_addr,
             "Datacake cluster connected."
@@ -348,7 +351,7 @@ where
     /// Changes applied to the handle are distributed across the cluster.
     pub fn handle(&self) -> DatacakeHandle<S> {
         DatacakeHandle {
-            node_id: Cow::Owned(self.node.node_id.clone()),
+            node_id: self.node.node_id,
             public_addr: self.node.public_addr,
             network: self.network.clone(),
             group: self.group.clone(),
@@ -384,8 +387,8 @@ where
                     node_ids.iter().all(|node| {
                         members
                             .iter()
-                            .map(|m| m.node_id.as_str())
-                            .contains(&node.as_ref())
+                            .map(|m| m.node_id.to_string())
+                            .contains(&node.as_ref().to_string())
                     })
                 },
                 timeout,
@@ -399,7 +402,7 @@ pub struct DatacakeHandle<S>
 where
     S: Storage + Send + Sync + 'static,
 {
-    node_id: Cow<'static, str>,
+    node_id: NodeID,
     public_addr: SocketAddr,
     network: RpcNetwork,
     group: KeyspaceGroup<S>,
@@ -415,7 +418,7 @@ where
 {
     fn clone(&self) -> Self {
         Self {
-            node_id: self.node_id.clone(),
+            node_id: self.node_id,
             public_addr: self.public_addr,
             network: self.network.clone(),
             group: self.group.clone(),
@@ -494,7 +497,11 @@ where
             .await
             .map_err(error::DatacakeError::ConsistencyError)?;
 
-        let node_id = self.node_id.clone();
+        let mut node_map = HashMap::with_capacity(64);
+        nodes.iter().for_each(|(id, node)| {
+            node_map.insert(*node, *id);
+        });
+
         let node_addr = self.public_addr;
         let last_updated = self.clock.get_time().await;
         let document = Document::new(doc_id, last_updated, data);
@@ -515,10 +522,14 @@ where
         });
 
         let factory = |node| {
+            let node_id = if let Some(id) = node_map.get(&node) {
+                *id
+            } else {
+                panic!("failed to find node_id in node_map for {}", node);
+            };
             let clock = self.group.clock().clone();
             let keyspace = keyspace.name().to_string();
             let document = document.clone();
-            let node_id = node_id.clone();
             async move {
                 let channel = self
                     .network
@@ -529,7 +540,7 @@ where
                 let mut client = ConsistencyClient::new(clock, channel);
 
                 client
-                    .put(keyspace, document, &node_id, node_addr)
+                    .put(keyspace, document, node_id, node_addr)
                     .await
                     .map_err(|e| error::DatacakeError::RpcError(node, e))?;
 
@@ -558,7 +569,12 @@ where
             .await
             .map_err(error::DatacakeError::ConsistencyError)?;
 
-        let node_id = self.node_id.clone();
+        let mut node_map = HashMap::with_capacity(64);
+        nodes.iter().for_each(|(id, node)| {
+            node_map.insert(*node, *id);
+        });
+
+        let _node_id = self.node_id;
         let node_addr = self.public_addr;
         let last_updated = self.clock.get_time().await;
         let docs = documents
@@ -582,11 +598,14 @@ where
         });
 
         let factory = |node| {
+            let node_id = if let Some(id) = node_map.get(&node) {
+                *id
+            } else {
+                panic!("failed to find node_id in node_map for {}", node);
+            };
             let clock = self.group.clock().clone();
             let keyspace = keyspace.name().to_string();
             let documents = docs.clone();
-            let node_id = node_id.clone();
-            let node_addr = node_addr;
             async move {
                 let channel = self
                     .network
@@ -597,7 +616,7 @@ where
                 let mut client = ConsistencyClient::new(clock, channel);
 
                 client
-                    .multi_put(keyspace, documents.into_iter(), &node_id, node_addr)
+                    .multi_put(keyspace, documents.into_iter(), node_id, node_addr)
                     .await
                     .map_err(|e| error::DatacakeError::RpcError(node, e))?;
 
@@ -621,6 +640,11 @@ where
             .await
             .map_err(error::DatacakeError::ConsistencyError)?;
 
+        let mut node_map = HashMap::with_capacity(64);
+        nodes.iter().for_each(|(id, node)| {
+            node_map.insert(*node, *id);
+        });
+
         let last_updated = self.clock.get_time().await;
 
         let keyspace = self.group.get_or_create_keyspace(keyspace).await;
@@ -640,6 +664,11 @@ where
         });
 
         let factory = |node| {
+            let _node_id = if let Some(id) = node_map.get(&node) {
+                *id
+            } else {
+                panic!("failed to find node_id in node_map for {}", node);
+            };
             let clock = self.group.clock().clone();
             let keyspace = keyspace.name().to_string();
             async move {
@@ -679,6 +708,10 @@ where
             .get_nodes(consistency)
             .await
             .map_err(error::DatacakeError::ConsistencyError)?;
+        let mut node_map = HashMap::with_capacity(64);
+        nodes.iter().for_each(|(id, node)| {
+            node_map.insert(*node, *id);
+        });
 
         let last_updated = self.clock.get_time().await;
         let docs = doc_ids
@@ -701,6 +734,11 @@ where
         });
 
         let factory = |node| {
+            let _node_id = if let Some(id) = node_map.get(&node) {
+                *id
+            } else {
+                panic!("failed to find node_id in node_map for {}", node);
+            };
             let clock = self.group.clock().clone();
             let keyspace = keyspace.name().to_string();
             let docs = docs.clone();
@@ -834,7 +872,7 @@ struct ClusterInfo<'a> {
 /// The node will attempt to establish connections to the seed nodes and
 /// will broadcast the node's public address to communicate.
 async fn connect_node<S, R>(
-    node_id: String,
+    node_id: age::x25519::Identity,
     cluster_id: String,
     group: KeyspaceGroup<S>,
     network: RpcNetwork,
@@ -855,8 +893,11 @@ where
     };
     let transport = GrpcTransport::new(context, chitchat_rx);
 
-    let me =
-        ClusterMember::new(node_id, cluster_info.public_addr, cluster_info.data_center);
+    let me = ClusterMember::new(
+        node_id.to_public(),
+        cluster_info.public_addr,
+        cluster_info.data_center,
+    );
     let node = DatacakeNode::connect(
         me,
         cluster_info.listen_addr,
@@ -882,9 +923,8 @@ async fn setup_poller(
     statistics: ClusterStatistics,
 ) {
     let changes = node.member_change_watcher();
-    let self_node_id = Cow::Owned(node.node_id.clone());
     tokio::spawn(watch_membership_changes(
-        self_node_id,
+        node.node_id,
         task_service,
         repair_service,
         network,
@@ -898,7 +938,7 @@ async fn setup_poller(
 ///
 /// When nodes leave and join, pollers are stopped and started as required.
 async fn watch_membership_changes(
-    self_node_id: Cow<'static, str>,
+    self_node_id: NodeID,
     task_service: TaskDistributor,
     repair_service: ReplicationHandle,
     network: RpcNetwork,
@@ -909,22 +949,26 @@ async fn watch_membership_changes(
     let mut last_network_set = HashSet::new();
     while let Some(members) = changes.next().await {
         info!(
-            self_node_id = %self_node_id,
+            self_node_id = %self_node_id.to_string(),
             num_members = members.len(),
             "Cluster membership has changed."
         );
 
         let new_network_set = members
             .iter()
-            .filter(|member| member.node_id != self_node_id.as_ref())
-            .map(|member| (member.node_id.clone(), member.public_addr))
+            .filter(|member| member.node_id != self_node_id)
+            .map(|member| (member.node_id, member.public_addr))
             .collect::<HashSet<_>>();
 
         {
-            let mut data_centers = BTreeMap::<Cow<'static, str>, Vec<SocketAddr>>::new();
+            let mut data_centers =
+                BTreeMap::<Cow<'static, str>, Vec<(NodeID, SocketAddr)>>::new();
             for member in members.iter() {
                 let dc = Cow::Owned(member.data_center.clone());
-                data_centers.entry(dc).or_default().push(member.public_addr);
+                data_centers
+                    .entry(dc)
+                    .or_default()
+                    .push((member.node_id, member.public_addr));
             }
 
             statistics
@@ -937,28 +981,26 @@ async fn watch_membership_changes(
         // Remove client no longer apart of the network.
         for (node_id, addr) in last_network_set.difference(&new_network_set) {
             info!(
-                self_node_id = %self_node_id,
-                target_node_id = %node_id,
+                self_node_id = %self_node_id.to_string(),
+                target_node_id = %node_id.to_string(),
                 target_addr = %addr,
                 "Node is no longer part of cluster."
             );
 
             network.disconnect(*addr);
-            membership_changes.left.push(Cow::Owned(node_id.clone()));
+            membership_changes.left.push(*node_id);
         }
 
         // Add new clients for each new node.
         for (node_id, addr) in new_network_set.difference(&last_network_set) {
             info!(
-                self_node_id = %self_node_id,
-                target_node_id = %node_id,
+                self_node_id = %self_node_id.to_string(),
+                target_node_id = %node_id.to_string(),
                 target_addr = %addr,
                 "Node has connected to the cluster."
             );
 
-            membership_changes
-                .joined
-                .push((Cow::Owned(node_id.clone()), *addr));
+            membership_changes.joined.push((*node_id, *addr));
         }
 
         task_service.membership_change(membership_changes.clone());
@@ -969,7 +1011,7 @@ async fn watch_membership_changes(
 }
 
 async fn handle_consistency_distribution<S, CB, F>(
-    nodes: Vec<SocketAddr>,
+    nodes: Vec<(NodeID, SocketAddr)>,
     factory: CB,
 ) -> Result<(), error::DatacakeError<S::Error>>
 where
@@ -982,6 +1024,7 @@ where
 
     let mut requests = nodes
         .into_iter()
+        .map(|(_, node)| node)
         .map(factory)
         .collect::<FuturesUnordered<_>>();
 

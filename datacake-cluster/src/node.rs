@@ -1,6 +1,6 @@
 use std::error::Error;
-use std::fmt::Debug;
 use std::net::SocketAddr;
+use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -19,6 +19,7 @@ use tokio_stream::wrappers::WatchStream;
 use tokio_stream::StreamExt;
 
 use crate::error::DatacakeError;
+use crate::node_identifier::NodeID;
 use crate::{ClusterStatistics, DEFAULT_DATA_CENTER};
 
 static DATA_CENTER_KEY: &str = "data_center";
@@ -28,10 +29,12 @@ const GOSSIP_INTERVAL: Duration = if cfg!(test) {
     Duration::from_secs(1)
 };
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct ClusterMember {
     /// A unique ID for the given node in the cluster.
-    pub node_id: String,
+    ///
+    /// this is the node's age public key
+    pub node_id: NodeID,
     /// The public address of the nod.
     pub public_addr: SocketAddr,
     /// The data center / availability zone the node is in.
@@ -42,19 +45,20 @@ pub struct ClusterMember {
 
 impl ClusterMember {
     pub fn new(
-        node_id: String,
+        node_id: age::x25519::Recipient,
         public_addr: SocketAddr,
         data_center: impl Into<String>,
     ) -> Self {
         Self {
-            node_id,
+            node_id: node_id.into(),
             public_addr,
             data_center: data_center.into(),
         }
     }
 
     pub fn chitchat_id(&self) -> String {
-        self.node_id.clone()
+        // wont ever fail
+        self.node_id.to_string()
     }
 }
 
@@ -68,7 +72,7 @@ pub struct DatacakeNode {
     /// The ID of the cluster this node belongs to.
     pub cluster_id: String,
     /// The ID of the current node.
-    pub node_id: String,
+    pub node_id: NodeID,
     /// The public address of the node.
     pub public_addr: SocketAddr,
 
@@ -92,13 +96,12 @@ impl DatacakeNode {
     {
         info!(
             cluster_id = %cluster_id,
-            node_id = %me.node_id,
+            node_id = %me.node_id.to_string(),
             public_addr = %me.public_addr,
             listen_gossip_addr = %listen_addr,
             peer_seed_addrs = %seed_nodes.join(", "),
             "Joining cluster."
         );
-
         let cfg = ChitchatConfig {
             node_id: NodeId::from(me.clone()),
             cluster_id: cluster_id.clone(),
@@ -122,7 +125,7 @@ impl DatacakeNode {
 
         let cluster = DatacakeNode {
             cluster_id,
-            node_id: me.chitchat_id(),
+            node_id: me.node_id,
             public_addr: me.public_addr,
             chitchat_handle,
             members: members_rx,
@@ -245,7 +248,7 @@ fn build_cluster_member<'a>(
         .unwrap_or(DEFAULT_DATA_CENTER);
 
     Ok(ClusterMember::new(
-        node_id.id.to_string(),
+        age::x25519::Recipient::from_str(&node_id.id.to_string())?,
         node_id.gossip_public_address,
         data_center,
     ))
@@ -265,7 +268,12 @@ mod tests {
         let _ = tracing_subscriber::fmt::try_init();
 
         let transport = ChannelTransport::default();
-        let cluster = create_node_for_test(Vec::new(), &transport).await?;
+        let cluster = create_node_for_test(
+            age::x25519::Identity::generate(),
+            Vec::new(),
+            &transport,
+        )
+        .await?;
 
         let members: Vec<SocketAddr> = cluster
             .members()
@@ -283,11 +291,25 @@ mod tests {
         let _ = tracing_subscriber::fmt::try_init();
 
         let transport = ChannelTransport::default();
-        let node1 = create_node_for_test(Vec::new(), &transport).await?;
+        let node1 = create_node_for_test(
+            age::x25519::Identity::generate(),
+            Vec::new(),
+            &transport,
+        )
+        .await?;
         let node_1_gossip_addr = node1.public_addr.to_string();
-        let node2 =
-            create_node_for_test(vec![node_1_gossip_addr.clone()], &transport).await?;
-        let node3 = create_node_for_test(vec![node_1_gossip_addr], &transport).await?;
+        let node2 = create_node_for_test(
+            age::x25519::Identity::generate(),
+            vec![node_1_gossip_addr.clone()],
+            &transport,
+        )
+        .await?;
+        let node3 = create_node_for_test(
+            age::x25519::Identity::generate(),
+            vec![node_1_gossip_addr],
+            &transport,
+        )
+        .await?;
 
         let wait_secs = Duration::from_secs(30);
         for cluster in [&node1, &node2, &node3] {
@@ -317,16 +339,16 @@ mod tests {
     pub struct TestError(#[from] pub anyhow::Error);
 
     pub async fn create_node_for_test_with_id(
-        node_id: u16,
+        node_id: age::x25519::Identity,
+        port: u16,
         cluster_id: String,
         seeds: Vec<String>,
         transport: &dyn Transport,
     ) -> Result<DatacakeNode> {
-        let public_addr: SocketAddr = ([127, 0, 0, 1], node_id).into();
-        let node_id = format!("node_{node_id}");
+        let public_addr: SocketAddr = ([127, 0, 0, 1], port).into();
         let failure_detector_config = create_failure_detector_config_for_test();
         let node = DatacakeNode::connect::<TestError>(
-            ClusterMember::new(node_id, public_addr, DATA_CENTER_KEY),
+            ClusterMember::new(node_id.to_public(), public_addr, DATA_CENTER_KEY),
             public_addr,
             cluster_id,
             seeds,
@@ -339,18 +361,30 @@ mod tests {
     }
 
     pub async fn create_node_for_test(
+        node_id: age::x25519::Identity,
         seeds: Vec<String>,
         transport: &dyn Transport,
     ) -> Result<DatacakeNode> {
         static NODE_AUTO_INCREMENT: AtomicU16 = AtomicU16::new(1u16);
-        let node_id = NODE_AUTO_INCREMENT.fetch_add(1, Ordering::Relaxed);
+        let port = NODE_AUTO_INCREMENT.fetch_add(1, Ordering::Relaxed);
         let node = create_node_for_test_with_id(
             node_id,
+            port,
             "test-cluster".to_string(),
             seeds,
             transport,
         )
         .await?;
         Ok(node)
+    }
+}
+
+impl std::fmt::Debug for ClusterMember {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ClusterMember")
+            .field("node_id", &self.chitchat_id())
+            .field("public_addr", &self.public_addr)
+            .field("data_center", &self.data_center)
+            .finish()
     }
 }

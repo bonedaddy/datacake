@@ -23,6 +23,7 @@ use crate::keyspace::{
     MultiSet,
     READ_REPAIR_SOURCE_ID,
 };
+use crate::node_identifier::NodeID;
 use crate::replication::{MembershipChanges, MAX_CONCURRENT_REQUESTS};
 use crate::rpc::ReplicationClient;
 use crate::{Clock, ProgressTracker, PutContext, RpcNetwork, Storage};
@@ -140,12 +141,12 @@ async fn replication_cycle<S>(
             match op {
                 Op::MembershipChange(changes) => {
                     for node_id in changes.left {
-                        live_members.remove(node_id.as_ref());
-                        keyspace_tracker.remove_node(node_id.as_ref());
+                        live_members.remove(&node_id);
+                        keyspace_tracker.remove_node(&node_id.to_string());
                     }
 
                     for (node_id, addr) in changes.joined {
-                        live_members.insert(node_id.to_string(), addr);
+                        live_members.insert(node_id, addr);
                     }
                 },
             }
@@ -186,20 +187,19 @@ impl KeyspaceTracker {
 /// This will return a optimised plan of what nodes should have what documents retrieved.
 async fn read_repair_members<S>(
     ctx: &ReplicationCycleContext<S>,
-    live_members: &BTreeMap<String, SocketAddr>,
+    live_members: &BTreeMap<NodeID, SocketAddr>,
     keyspace_tracker: &mut KeyspaceTracker,
 ) where
     S: Storage + Send + Sync + 'static,
 {
     for (node_id, addr) in live_members {
-        let res =
-            check_node_changes(ctx, node_id.clone(), *addr, keyspace_tracker).await;
+        let res = check_node_changes(ctx, *node_id, *addr, keyspace_tracker).await;
 
         let info = match res {
             Err(e) => {
                 error!(
                     error = ?e,
-                    target_node_id = %node_id,
+                    target_node_id = %node_id.to_string(),
                     target_node_addr = %addr,
                     "Failed to poll node changes due to error.",
                 );
@@ -212,7 +212,7 @@ async fn read_repair_members<S>(
             let res = begin_keyspace_sync(
                 ctx,
                 change.keyspace.clone(),
-                node_id.to_string(),
+                *node_id,
                 *addr,
                 change.removed,
                 change.modified,
@@ -223,7 +223,7 @@ async fn read_repair_members<S>(
                 error!(
                     error = ?e,
                     keyspace = %change.keyspace,
-                    target_node_id = %node_id,
+                    target_node_id = %node_id.to_string(),
                     target_node_addr = %addr,
                     index = %idx,
                     "Failed to sync with node."
@@ -246,7 +246,7 @@ async fn read_repair_members<S>(
 /// and restarted.
 async fn check_node_changes<S>(
     ctx: &ReplicationCycleContext<S>,
-    target_node_id: String,
+    target_node_id: NodeID,
     target_node_addr: SocketAddr,
     keyspace_tracker: &mut KeyspaceTracker,
 ) -> Result<NodeChangeInfo, anyhow::Error>
@@ -254,7 +254,7 @@ where
     S: Storage + Send + Sync + 'static,
 {
     info!(
-        target_node_id = %target_node_id,
+        target_node_id = %target_node_id.to_string(),
         target_node_addr = %target_node_addr,
         "Getting keyspace changes on remote node.",
     );
@@ -264,7 +264,7 @@ where
     let keyspace_timestamps = client.poll_keyspace().await?;
 
     let diff = keyspace_tracker
-        .get_diff(target_node_id.clone(), &keyspace_timestamps)
+        .get_diff(target_node_id.to_string(), &keyspace_timestamps)
         .map(|ks| ks.to_string())
         .collect::<Vec<_>>();
 
@@ -272,7 +272,7 @@ where
     let mut tasks = Vec::new();
     for keyspace in diff {
         let permits = permits.clone();
-        let target_node_id = target_node_id.clone();
+        let target_node_id = target_node_id;
         let group = ctx.group.clone();
         let client = ReplicationClient::new(ctx.clock().clone(), channel.clone());
 
@@ -378,7 +378,7 @@ where
 async fn begin_keyspace_sync<S>(
     ctx: &ReplicationCycleContext<S>,
     keyspace_name: String,
-    target_node_id: String,
+    target_node_id: NodeID,
     target_rpc_addr: SocketAddr,
     removed: StateChanges,
     modified: StateChanges,
@@ -393,7 +393,7 @@ where
     let progress_tracker = ProgressTracker::default();
     let ctx = PutContext {
         progress: progress_tracker.clone(),
-        remote_node_id: Cow::Owned(target_node_id.clone()),
+        remote_node_id: target_node_id,
         remote_addr: target_rpc_addr,
         remote_rpc_channel: channel,
     };

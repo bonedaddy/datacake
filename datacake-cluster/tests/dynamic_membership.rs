@@ -11,9 +11,12 @@ use datacake_cluster::{
     DatacakeCluster,
 };
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 pub async fn test_member_join() -> anyhow::Result<()> {
     let _ = tracing_subscriber::fmt::try_init();
+    let node_1_id = age::x25519::Identity::generate();
+    let node_2_id = age::x25519::Identity::generate();
+    let node_3_id = age::x25519::Identity::generate();
 
     let node_1_addr = "127.0.0.1:8018".parse::<SocketAddr>().unwrap();
     let node_2_addr = "127.0.0.1:8019".parse::<SocketAddr>().unwrap();
@@ -35,7 +38,7 @@ pub async fn test_member_join() -> anyhow::Result<()> {
     );
 
     let node_1 = DatacakeCluster::connect(
-        "node-1",
+        node_1_id.clone(),
         node_1_connection_cfg,
         InstrumentedStorage(MemStore::default()),
         DCAwareSelector::default(),
@@ -43,8 +46,9 @@ pub async fn test_member_join() -> anyhow::Result<()> {
     )
     .await
     .expect("Connect node.");
+
     let node_2 = DatacakeCluster::connect(
-        "node-2",
+        node_2_id.clone(),
         node_2_connection_cfg,
         InstrumentedStorage(MemStore::default()),
         DCAwareSelector::default(),
@@ -54,11 +58,18 @@ pub async fn test_member_join() -> anyhow::Result<()> {
     .expect("Connect node.");
 
     node_1
-        .wait_for_nodes(&["node-2"], Duration::from_secs(30))
+        .wait_for_nodes(
+            &[node_2_id.to_public().to_string()],
+            Duration::from_secs(30),
+        )
         .await
         .expect("Nodes should connect within timeout.");
+
     node_2
-        .wait_for_nodes(&["node-1"], Duration::from_secs(30))
+        .wait_for_nodes(
+            &[node_1_id.to_public().to_string()],
+            Duration::from_secs(30),
+        )
         .await
         .expect("Nodes should connect within timeout.");
 
@@ -69,6 +80,7 @@ pub async fn test_member_join() -> anyhow::Result<()> {
         .put(1, b"Hello, world from node-1".to_vec(), Consistency::All)
         .await
         .expect("Put value.");
+
     node_2_handle
         .put(2, b"Hello, world from node-2".to_vec(), Consistency::All)
         .await
@@ -105,7 +117,7 @@ pub async fn test_member_join() -> anyhow::Result<()> {
     assert_eq!(doc.data, Bytes::from_static(b"Hello, world from node-2"));
 
     let node_3 = DatacakeCluster::connect(
-        "node-3",
+        node_3_id,
         node_3_connection_cfg,
         InstrumentedStorage(MemStore::default()),
         DCAwareSelector::default(),
@@ -114,7 +126,13 @@ pub async fn test_member_join() -> anyhow::Result<()> {
     .await
     .expect("Connect node.");
     node_3
-        .wait_for_nodes(&["node-1", "node-2"], Duration::from_secs(30))
+        .wait_for_nodes(
+            &[
+                node_1_id.to_public().to_string(),
+                node_2_id.to_public().to_string(),
+            ],
+            Duration::from_secs(30),
+        )
         .await
         .expect("Nodes should connect within timeout.");
     let node_3_handle = node_3.handle_with_keyspace("my-keyspace");
@@ -170,6 +188,10 @@ pub async fn test_member_join_sled() -> anyhow::Result<()> {
     use datacake_sled::SledStorage;
     let _ = tracing_subscriber::fmt::try_init();
 
+    let node_1_id = age::x25519::Identity::generate();
+    let node_2_id = age::x25519::Identity::generate();
+    let node_3_id = age::x25519::Identity::generate();
+
     let node_1_addr = "127.0.0.1:8018".parse::<SocketAddr>().unwrap();
     let node_2_addr = "127.0.0.1:8019".parse::<SocketAddr>().unwrap();
     let node_3_addr = "127.0.0.1:8020".parse::<SocketAddr>().unwrap();
@@ -190,7 +212,7 @@ pub async fn test_member_join_sled() -> anyhow::Result<()> {
     );
 
     let node_1 = DatacakeCluster::connect(
-        "node-1",
+        node_1_id.clone(),
         node_1_connection_cfg,
         InstrumentedStorage(SledStorage::open_temporary().unwrap()),
         DCAwareSelector::default(),
@@ -199,7 +221,7 @@ pub async fn test_member_join_sled() -> anyhow::Result<()> {
     .await
     .expect("Connect node.");
     let node_2 = DatacakeCluster::connect(
-        "node-2",
+        node_2_id.clone(),
         node_2_connection_cfg,
         InstrumentedStorage(SledStorage::open_temporary().unwrap()),
         DCAwareSelector::default(),
@@ -209,11 +231,17 @@ pub async fn test_member_join_sled() -> anyhow::Result<()> {
     .expect("Connect node.");
 
     node_1
-        .wait_for_nodes(&["node-2"], Duration::from_secs(30))
+        .wait_for_nodes(
+            &[node_2_id.to_public().to_string()],
+            Duration::from_secs(30),
+        )
         .await
         .expect("Nodes should connect within timeout.");
     node_2
-        .wait_for_nodes(&["node-1"], Duration::from_secs(30))
+        .wait_for_nodes(
+            &[node_1_id.to_public().to_string()],
+            Duration::from_secs(30),
+        )
         .await
         .expect("Nodes should connect within timeout.");
 
@@ -260,7 +288,7 @@ pub async fn test_member_join_sled() -> anyhow::Result<()> {
     assert_eq!(doc.data, Bytes::from_static(b"Hello, world from node-2"));
 
     let node_3 = DatacakeCluster::connect(
-        "node-3",
+        node_3_id.clone(),
         node_3_connection_cfg,
         InstrumentedStorage(MemStore::default()),
         DCAwareSelector::default(),
@@ -269,7 +297,13 @@ pub async fn test_member_join_sled() -> anyhow::Result<()> {
     .await
     .expect("Connect node.");
     node_3
-        .wait_for_nodes(&["node-1", "node-2"], Duration::from_secs(30))
+        .wait_for_nodes(
+            &[
+                node_1_id.to_public().to_string(),
+                node_2_id.to_public().to_string(),
+            ],
+            Duration::from_secs(30),
+        )
         .await
         .expect("Nodes should connect within timeout.");
     let node_3_handle = node_3.handle_with_keyspace("my-keyspace");
@@ -325,6 +359,10 @@ pub async fn test_member_join_sled() -> anyhow::Result<()> {
 pub async fn test_member_leave() -> anyhow::Result<()> {
     let _ = tracing_subscriber::fmt::try_init();
 
+    let node_1_id = age::x25519::Identity::generate();
+    let node_2_id = age::x25519::Identity::generate();
+    let node_3_id = age::x25519::Identity::generate();
+
     let node_1_addr = "127.0.0.1:8021".parse::<SocketAddr>().unwrap();
     let node_2_addr = "127.0.0.1:8022".parse::<SocketAddr>().unwrap();
     let node_3_addr = "127.0.0.1:8023".parse::<SocketAddr>().unwrap();
@@ -345,7 +383,7 @@ pub async fn test_member_leave() -> anyhow::Result<()> {
     );
 
     let node_1 = DatacakeCluster::connect(
-        "node-1",
+        node_1_id.clone(),
         node_1_connection_cfg,
         InstrumentedStorage(MemStore::default()),
         DCAwareSelector::default(),
@@ -354,7 +392,7 @@ pub async fn test_member_leave() -> anyhow::Result<()> {
     .await
     .expect("Connect node.");
     let node_2 = DatacakeCluster::connect(
-        "node-2",
+        node_2_id.clone(),
         node_2_connection_cfg,
         InstrumentedStorage(MemStore::default()),
         DCAwareSelector::default(),
@@ -363,7 +401,7 @@ pub async fn test_member_leave() -> anyhow::Result<()> {
     .await
     .expect("Connect node.");
     let node_3 = DatacakeCluster::connect(
-        "node-3",
+        node_3_id.clone(),
         node_3_connection_cfg.clone(),
         InstrumentedStorage(MemStore::default()),
         DCAwareSelector::default(),
@@ -373,15 +411,33 @@ pub async fn test_member_leave() -> anyhow::Result<()> {
     .expect("Connect node.");
 
     node_1
-        .wait_for_nodes(&["node-2", "node-3"], Duration::from_secs(30))
+        .wait_for_nodes(
+            &[
+                node_2_id.to_public().to_string(),
+                node_3_id.to_public().to_string(),
+            ],
+            Duration::from_secs(30),
+        )
         .await
         .expect("Nodes should connect within timeout.");
     node_2
-        .wait_for_nodes(&["node-3", "node-1"], Duration::from_secs(30))
+        .wait_for_nodes(
+            &[
+                node_3_id.to_public().to_string(),
+                node_1_id.to_public().to_string(),
+            ],
+            Duration::from_secs(30),
+        )
         .await
         .expect("Nodes should connect within timeout.");
     node_3
-        .wait_for_nodes(&["node-2", "node-1"], Duration::from_secs(30))
+        .wait_for_nodes(
+            &[
+                node_2_id.to_public().to_string(),
+                node_1_id.to_public().to_string(),
+            ],
+            Duration::from_secs(30),
+        )
         .await
         .expect("Nodes should connect within timeout.");
 

@@ -654,10 +654,13 @@ async fn test_async_operations() -> anyhow::Result<()> {
 async fn connect_cluster(
     addrs: [SocketAddr; 3],
 ) -> [DatacakeCluster<InstrumentedStorage<MemStore>>; 3] {
+    let node_1_id = age::x25519::Identity::generate();
+    let node_2_id = age::x25519::Identity::generate();
+    let node_3_id = age::x25519::Identity::generate();
     dbg!(
-        crc32fast::hash("node-1".as_bytes()),
-        crc32fast::hash("node-2".as_bytes()),
-        crc32fast::hash("node-3".as_bytes())
+        crc32fast::hash(node_1_id.to_public().to_string().as_bytes()),
+        crc32fast::hash(node_2_id.to_public().to_string().as_bytes()),
+        crc32fast::hash(node_3_id.to_public().to_string().as_bytes())
     );
 
     let node_1_connection_cfg = ConnectionConfig::new(
@@ -677,7 +680,7 @@ async fn connect_cluster(
     );
 
     let node_1 = DatacakeCluster::connect(
-        "node-1",
+        node_1_id.clone(),
         node_1_connection_cfg,
         InstrumentedStorage(MemStore::default()),
         DCAwareSelector::default(),
@@ -686,7 +689,7 @@ async fn connect_cluster(
     .await
     .expect("Connect node.");
     let node_2 = DatacakeCluster::connect(
-        "node-2",
+        node_2_id.clone(),
         node_2_connection_cfg,
         InstrumentedStorage(MemStore::default()),
         DCAwareSelector::default(),
@@ -695,7 +698,7 @@ async fn connect_cluster(
     .await
     .expect("Connect node.");
     let node_3 = DatacakeCluster::connect(
-        "node-3",
+        node_3_id.clone(),
         node_3_connection_cfg,
         InstrumentedStorage(MemStore::default()),
         DCAwareSelector::default(),
@@ -705,15 +708,33 @@ async fn connect_cluster(
     .expect("Connect node.");
 
     node_1
-        .wait_for_nodes(&["node-2", "node-3"], Duration::from_secs(30))
+        .wait_for_nodes(
+            &[
+                &node_2_id.to_public().to_string(),
+                &node_3_id.to_public().to_string(),
+            ],
+            Duration::from_secs(30),
+        )
         .await
         .expect("Nodes should connect within timeout.");
     node_2
-        .wait_for_nodes(&["node-3", "node-1"], Duration::from_secs(30))
+        .wait_for_nodes(
+            &[
+                &node_3_id.to_public().to_string(),
+                &node_1_id.to_public().to_string(),
+            ],
+            Duration::from_secs(30),
+        )
         .await
         .expect("Nodes should connect within timeout.");
     node_3
-        .wait_for_nodes(&["node-2", "node-1"], Duration::from_secs(30))
+        .wait_for_nodes(
+            &[
+                &node_2_id.to_public().to_string(),
+                &node_1_id.to_public().to_string(),
+            ],
+            Duration::from_secs(30),
+        )
         .await
         .expect("Nodes should connect within timeout.");
 
@@ -749,12 +770,14 @@ async fn connect_sled_cluster(
     addrs: [SocketAddr; 3],
 ) -> [DatacakeCluster<InstrumentedStorage<datacake_sled::SledStorage>>; 3] {
     use datacake_sled::SledStorage;
+    let node_1_id = age::x25519::Identity::generate();
+    let node_2_id = age::x25519::Identity::generate();
+    let node_3_id = age::x25519::Identity::generate();
     dbg!(
-        crc32fast::hash("node-1".as_bytes()),
-        crc32fast::hash("node-2".as_bytes()),
-        crc32fast::hash("node-3".as_bytes())
+        crc32fast::hash(node_1_id.to_public().to_string().as_bytes()),
+        crc32fast::hash(node_2_id.to_public().to_string().as_bytes()),
+        crc32fast::hash(node_3_id.to_public().to_string().as_bytes())
     );
-
     let node_1_connection_cfg = ConnectionConfig::new(
         addrs[0],
         addrs[0],
@@ -772,7 +795,7 @@ async fn connect_sled_cluster(
     );
 
     let node_1 = DatacakeCluster::connect(
-        "node-1",
+        node_1_id.clone(),
         node_1_connection_cfg,
         InstrumentedStorage(SledStorage::open_temporary().unwrap()),
         DCAwareSelector::default(),
@@ -781,7 +804,7 @@ async fn connect_sled_cluster(
     .await
     .expect("Connect node.");
     let node_2 = DatacakeCluster::connect(
-        "node-2",
+        node_2_id.clone(),
         node_2_connection_cfg,
         InstrumentedStorage(SledStorage::open_temporary().unwrap()),
         DCAwareSelector::default(),
@@ -790,7 +813,7 @@ async fn connect_sled_cluster(
     .await
     .expect("Connect node.");
     let node_3 = DatacakeCluster::connect(
-        "node-3",
+        node_3_id.clone(),
         node_3_connection_cfg,
         InstrumentedStorage(SledStorage::open_temporary().unwrap()),
         DCAwareSelector::default(),
@@ -800,15 +823,33 @@ async fn connect_sled_cluster(
     .expect("Connect node.");
 
     node_1
-        .wait_for_nodes(&["node-2", "node-3"], Duration::from_secs(30))
+        .wait_for_nodes(
+            &[
+                &node_2_id.to_public().to_string(),
+                &node_3_id.to_public().to_string(),
+            ],
+            Duration::from_secs(30),
+        )
         .await
         .expect("Nodes should connect within timeout.");
     node_2
-        .wait_for_nodes(&["node-3", "node-1"], Duration::from_secs(30))
+        .wait_for_nodes(
+            &[
+                &node_3_id.to_public().to_string(),
+                &node_1_id.to_public().to_string(),
+            ],
+            Duration::from_secs(30),
+        )
         .await
         .expect("Nodes should connect within timeout.");
     node_3
-        .wait_for_nodes(&["node-2", "node-1"], Duration::from_secs(30))
+        .wait_for_nodes(
+            &[
+                &node_2_id.to_public().to_string(),
+                &node_1_id.to_public().to_string(),
+            ],
+            Duration::from_secs(30),
+        )
         .await
         .expect("Nodes should connect within timeout.");
 

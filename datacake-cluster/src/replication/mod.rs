@@ -1,7 +1,6 @@
 mod distributor;
 mod poller;
 
-use std::borrow::Cow;
 use std::net::SocketAddr;
 
 pub const MAX_CONCURRENT_REQUESTS: usize = 10;
@@ -10,9 +9,9 @@ pub const MAX_CONCURRENT_REQUESTS: usize = 10;
 /// Represents a set of changes to the membership of the cluster.
 pub(crate) struct MembershipChanges {
     /// A set of nodes which have joined the cluster.
-    pub(crate) joined: Vec<(Cow<'static, str>, SocketAddr)>,
+    pub(crate) joined: Vec<(NodeID, SocketAddr)>,
     /// A set of nodes which have left the cluster.
-    pub(crate) left: Vec<Cow<'static, str>>,
+    pub(crate) left: Vec<NodeID>,
 }
 
 pub(crate) use distributor::{
@@ -26,3 +25,5 @@ pub(crate) use poller::{
     ReplicationCycleContext,
     ReplicationHandle,
 };
+
+use crate::node_identifier::NodeID;

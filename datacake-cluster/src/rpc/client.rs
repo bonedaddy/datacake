@@ -10,6 +10,7 @@ use tonic::Status;
 
 use crate::core::Document;
 use crate::keyspace::KeyspaceTimestamps;
+use crate::node_identifier::NodeID;
 use crate::rpc::datacake_api;
 use crate::rpc::datacake_api::consistency_api_client::ConsistencyApiClient;
 use crate::rpc::datacake_api::replication_api_client::ReplicationApiClient;
@@ -47,7 +48,7 @@ impl ConsistencyClient {
         &mut self,
         keyspace: impl Into<String>,
         doc: Document,
-        node_id: &str,
+        node_id: NodeID,
         node_addr: SocketAddr,
     ) -> Result<(), Status> {
         let ts = self
@@ -72,7 +73,7 @@ impl ConsistencyClient {
         &mut self,
         keyspace: impl Into<String>,
         docs: impl Iterator<Item = Document>,
-        node_id: &str,
+        node_id: NodeID,
         node_addr: SocketAddr,
     ) -> Result<(), Status> {
         let ts = self

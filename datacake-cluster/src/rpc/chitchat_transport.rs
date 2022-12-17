@@ -117,6 +117,7 @@ impl Socket for GrpcConnection {
         let message = msg.serialize_to_vec();
         let source = self.self_addr.serialize_to_vec();
 
+        // todo: how do we get access to the ndoe id here?
         let channel =
             self.network.get_or_connect(to).await.map_err(|e| {
                 io::Error::new(ErrorKind::ConnectionRefused, e.to_string())

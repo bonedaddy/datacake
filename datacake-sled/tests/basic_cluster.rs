@@ -16,7 +16,8 @@ static KEYSPACE: &str = "sqlite-store";
 async fn test_basic_sled_cluster() -> Result<()> {
     std::env::set_var("RUST_LOG", "debug,h2=info,tower=info,sled=info");
     let _ = tracing_subscriber::fmt::try_init();
-
+    let node_1_id = age::x25519::Identity::generate();
+    let node_2_id = age::x25519::Identity::generate();
     let store_1 = SledStorage::open_temporary()?;
     let store_2 = SledStorage::open_temporary()?;
 
@@ -28,7 +29,7 @@ async fn test_basic_sled_cluster() -> Result<()> {
         ConnectionConfig::new(addr_2, addr_2, vec!["127.0.0.1:9000".to_string()]);
 
     let cluster_1 = DatacakeCluster::connect(
-        "node-1",
+        node_1_id.clone(),
         connection_cfg_1,
         store_1,
         DCAwareSelector::default(),
@@ -37,7 +38,7 @@ async fn test_basic_sled_cluster() -> Result<()> {
     .await?;
 
     let cluster_2 = DatacakeCluster::connect(
-        "node-2",
+        node_2_id.clone(),
         connection_cfg_2,
         store_2,
         DCAwareSelector::default(),

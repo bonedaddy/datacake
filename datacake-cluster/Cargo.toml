@@ -37,6 +37,13 @@ rkyv = { version = "0.7.9", features = ["validation"] }
 
 datacake-crdt = { path = "../datacake-crdt", version = "0.3", features = ["rkyv-support"] }
 
+age = {version = "0.9", features = ["async"]}
+zeroize = "1"
+x25519-dalek = "1"
+[dependencies.bech32]
+version = "0.9"
+
+
 [features]
 test-utils = []
 

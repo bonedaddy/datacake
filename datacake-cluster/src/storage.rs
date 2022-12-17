@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::error::Error;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -10,6 +9,7 @@ use datacake_crdt::{HLCTimestamp, Key};
 use tonic::transport::Channel;
 
 use crate::core::Document;
+use crate::node_identifier::NodeID;
 
 #[derive(Debug)]
 /// A utility for tracking the progress a task has made.
@@ -89,7 +89,7 @@ pub struct PutContext {
     pub(crate) progress: ProgressTracker,
 
     // Info relating to the remote node.
-    pub(crate) remote_node_id: Cow<'static, str>,
+    pub(crate) remote_node_id: NodeID,
     pub(crate) remote_addr: SocketAddr,
     pub(crate) remote_rpc_channel: Channel,
 }
@@ -106,8 +106,8 @@ impl PutContext {
 
     #[inline]
     /// The unique ID of the remote node.
-    pub fn remote_node_id(&self) -> &str {
-        self.remote_node_id.as_ref()
+    pub fn remote_node_id(&self) -> NodeID {
+        self.remote_node_id
     }
 
     #[inline]
@@ -367,9 +367,7 @@ pub mod test_suite {
         run_test_suite(MemStore::default()).await
     }
 
-    pub async fn run_test_suite<S: Storage + Send + Sync + 'static>(
-        storage: S,
-    ) {
+    pub async fn run_test_suite<S: Storage + Send + Sync + 'static>(storage: S) {
         let mut clock = HLCTimestamp::new(get_unix_timestamp_ms(), 0, 0);
         info!("Starting test suite for storage: {}", type_name::<S>());
 
@@ -394,7 +392,7 @@ pub mod test_suite {
 
         static KEYSPACE: &str = "first-keyspace";
         let check_list = vec![KEYSPACE.to_string()];
-        
+
         let res = storage.iter_metadata(KEYSPACE).await;
         if let Err(e) = res {
             panic!(
@@ -722,7 +720,6 @@ pub mod test_suite {
             .await
             .expect("Mark document as tombstone.");
 
-
         let res = storage.get(KEYSPACE, 2).await;
         assert!(
             res.is_ok(),
@@ -749,7 +746,6 @@ pub mod test_suite {
             )
             .await
             .expect("Merk documents as tombstones");
-
 
         let res = storage
             .multi_get(KEYSPACE, [1, 2, 3].into_iter())

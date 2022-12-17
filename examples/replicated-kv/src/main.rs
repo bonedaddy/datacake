@@ -30,13 +30,15 @@ async fn main() -> Result<()> {
     let args: Args = Args::parse();
     let storage =
         datacake_sled::SledStorage::open(sled::Config::new().path(&args.data_dir))?;
+    let node_1_id = age::x25519::Identity::generate();
+    info!("using node_id {}", node_1_id.to_public().to_string());
     let connection_cfg = ConnectionConfig::new(
         args.cluster_listen_addr,
         args.public_addr.unwrap_or(args.cluster_listen_addr),
         args.seeds.into_iter(),
     );
     let cluster = DatacakeCluster::connect(
-        args.node_id,
+        node_1_id,
         connection_cfg,
         storage,
         DCAwareSelector::default(),
@@ -85,10 +87,6 @@ async fn handle_error(error: BoxError) -> impl IntoResponse {
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 pub struct Args {
-    #[arg(long)]
-    /// The unique ID of the node.
-    node_id: String,
-
     #[arg(long = "seed")]
     /// The set of seed nodes.
     ///

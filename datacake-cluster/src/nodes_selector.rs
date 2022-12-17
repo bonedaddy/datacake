@@ -564,10 +564,7 @@ mod tests {
             .select_nodes(addr, "dc-0", total_nodes, &mut dc, Consistency::EachQuorum)
             .expect("Get nodes");
         assert_eq!(
-            nodes
-                .iter()
-                .map(|(_, addr)| addr.clone())
-                .collect::<Vec<_>>(),
+            nodes.iter().map(|(_, addr)| *addr).collect::<Vec<_>>(),
             vec![
                 make_addr(0, 1),
                 make_addr(1, 0),
@@ -580,10 +577,7 @@ mod tests {
             .select_nodes(addr, "dc-0", total_nodes, &mut dc, Consistency::LocalQuorum)
             .expect("Get nodes");
         assert_eq!(
-            nodes
-                .iter()
-                .map(|(_, addr)| addr.clone())
-                .collect::<Vec<_>>(),
+            nodes.iter().map(|(_, addr)| *addr).collect::<Vec<_>>(),
             vec![make_addr(0, 1)]
         );
 
@@ -591,10 +585,7 @@ mod tests {
             .select_nodes(addr, "dc-0", total_nodes, &mut dc, Consistency::Quorum)
             .expect("Get nodes");
         assert_eq!(
-            nodes
-                .iter()
-                .map(|(_, addr)| addr.clone())
-                .collect::<Vec<_>>(),
+            nodes.iter().map(|(_, addr)| *addr).collect::<Vec<_>>(),
             vec![make_addr(0, 1), make_addr(1, 0), make_addr(2, 0),]
         );
 
@@ -630,30 +621,21 @@ mod tests {
         let nodes =
             select_n_nodes(addr, "dc-0", 3, total_nodes, &mut dc).expect("get nodes");
         assert_eq!(
-            nodes
-                .iter()
-                .map(|(_, addr)| addr.clone())
-                .collect::<Vec<_>>(),
+            nodes.iter().map(|(_, addr)| *addr).collect::<Vec<_>>(),
             vec![make_addr(1, 0), make_addr(1, 1), make_addr(2, 0),],
         );
 
         let nodes =
             select_n_nodes(addr, "dc-0", 2, total_nodes, &mut dc).expect("get nodes");
         assert_eq!(
-            nodes
-                .iter()
-                .map(|(_, addr)| addr.clone())
-                .collect::<Vec<_>>(),
+            nodes.iter().map(|(_, addr)| *addr).collect::<Vec<_>>(),
             vec![make_addr(1, 0), make_addr(2, 0),],
         );
 
         let nodes =
             select_n_nodes(addr, "dc-0", 0, total_nodes, &mut dc).expect("get nodes");
         assert_eq!(
-            nodes
-                .iter()
-                .map(|(_, addr)| addr.clone())
-                .collect::<Vec<_>>(),
+            nodes.iter().map(|(_, addr)| *addr).collect::<Vec<_>>(),
             Vec::<SocketAddr>::new()
         );
 
@@ -661,30 +643,21 @@ mod tests {
         let nodes =
             select_n_nodes(addr, "dc-1", 3, total_nodes, &mut dc).expect("get nodes");
         assert_eq!(
-            nodes
-                .iter()
-                .map(|(_, addr)| addr.clone())
-                .collect::<Vec<_>>(),
+            nodes.iter().map(|(_, addr)| *addr).collect::<Vec<_>>(),
             vec![make_addr(0, 1), make_addr(0, 2), make_addr(2, 0),],
         );
 
         let nodes =
             select_n_nodes(addr, "dc-1", 2, total_nodes, &mut dc).expect("get nodes");
         assert_eq!(
-            nodes
-                .iter()
-                .map(|(_, addr)| addr.clone())
-                .collect::<Vec<_>>(),
+            nodes.iter().map(|(_, addr)| *addr).collect::<Vec<_>>(),
             vec![make_addr(0, 1), make_addr(2, 0),],
         );
 
         let nodes =
             select_n_nodes(addr, "dc-1", 0, total_nodes, &mut dc).expect("get nodes");
         assert_eq!(
-            nodes
-                .iter()
-                .map(|(_, addr)| addr.clone())
-                .collect::<Vec<_>>(),
+            nodes.iter().map(|(_, addr)| *addr).collect::<Vec<_>>(),
             Vec::<SocketAddr>::new()
         );
 
@@ -692,30 +665,21 @@ mod tests {
         let nodes =
             select_n_nodes(addr, "dc-2", 3, total_nodes, &mut dc).expect("get nodes");
         assert_eq!(
-            nodes
-                .iter()
-                .map(|(_, addr)| addr.clone())
-                .collect::<Vec<_>>(),
+            nodes.iter().map(|(_, addr)| *addr).collect::<Vec<_>>(),
             vec![make_addr(0, 2), make_addr(0, 0), make_addr(1, 1),],
         );
 
         let nodes =
             select_n_nodes(addr, "dc-2", 2, total_nodes, &mut dc).expect("get nodes");
         assert_eq!(
-            nodes
-                .iter()
-                .map(|(_, addr)| addr.clone())
-                .collect::<Vec<_>>(),
+            nodes.iter().map(|(_, addr)| *addr).collect::<Vec<_>>(),
             vec![make_addr(0, 1), make_addr(1, 0),],
         );
 
         let nodes =
             select_n_nodes(addr, "dc-2", 0, total_nodes, &mut dc).expect("get nodes");
         assert_eq!(
-            nodes
-                .iter()
-                .map(|(_, addr)| addr.clone())
-                .collect::<Vec<_>>(),
+            nodes.iter().map(|(_, addr)| *addr).collect::<Vec<_>>(),
             Vec::<SocketAddr>::new()
         );
     }
@@ -730,30 +694,21 @@ mod tests {
         let nodes =
             select_n_nodes(addr, "dc-0", 3, total_nodes, &mut dc).expect("get nodes");
         assert_eq!(
-            nodes
-                .iter()
-                .map(|(_, addr)| addr.clone())
-                .collect::<Vec<_>>(),
+            nodes.iter().map(|(_, addr)| *addr).collect::<Vec<_>>(),
             vec![make_addr(0, 1), make_addr(0, 2), make_addr(1, 0),],
         );
 
         let nodes =
             select_n_nodes(addr, "dc-0", 2, total_nodes, &mut dc).expect("get nodes");
         assert_eq!(
-            nodes
-                .iter()
-                .map(|(_, addr)| addr.clone())
-                .collect::<Vec<_>>(),
+            nodes.iter().map(|(_, addr)| *addr).collect::<Vec<_>>(),
             vec![make_addr(1, 1), make_addr(1, 0),],
         );
 
         let nodes =
             select_n_nodes(addr, "dc-0", 0, total_nodes, &mut dc).expect("get nodes");
         assert_eq!(
-            nodes
-                .iter()
-                .map(|(_, addr)| addr.clone())
-                .collect::<Vec<_>>(),
+            nodes.iter().map(|(_, addr)| *addr).collect::<Vec<_>>(),
             Vec::<SocketAddr>::new()
         );
     }

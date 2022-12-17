@@ -29,7 +29,7 @@ pub struct NodeIdentifier {
 
 impl NodeIdentifier {
     pub fn new(id: age::x25519::Identity) -> anyhow::Result<Self> {
-        Ok(TryFrom::try_from(id)?)
+        TryFrom::try_from(id)
     }
     pub fn keypair(&self) -> (SecretKey, PublicKey) {
         let pub_key = PublicKey::from(self.public_key);
@@ -57,7 +57,7 @@ impl FromStr for NodeID {
             return Err(anyhow::anyhow!("incorrect data length"));
         }
         let mut buffer: [u8; 62] = [0_u8; 62];
-        buffer.copy_from_slice(&s.as_bytes()[..]);
+        buffer.copy_from_slice(s.as_bytes());
         Ok(Self(buffer))
     }
 }
@@ -86,7 +86,7 @@ impl TryFrom<age::x25519::Identity> for NodeIdentifier {
         let node_id = {
             let mut buffer: [u8; 62] = [0_u8; 62];
             let public_key = id.to_public().to_string();
-            buffer.copy_from_slice(&public_key.as_bytes()[..]);
+            buffer.copy_from_slice(public_key.as_bytes());
             buffer
         };
         let extracted_id = strip_rage_identity(id)?;
@@ -104,7 +104,7 @@ impl TryFrom<age::x25519::Identity> for NodeIdentifier {
 impl TryFrom<ExtractedRageX25519Secret> for age::x25519::Identity {
     type Error = anyhow::Error;
     fn try_from(value: ExtractedRageX25519Secret) -> Result<Self, Self::Error> {
-        Ok(value.to_identity()?)
+        value.to_identity()
     }
 }
 
@@ -153,7 +153,7 @@ impl From<age::x25519::Recipient> for NodeID {
     fn from(r: age::x25519::Recipient) -> Self {
         let pub_key = r.to_string();
         let mut identifier: [u8; 62] = [0_u8; 62];
-        identifier.copy_from_slice(&pub_key.as_bytes()[..]);
+        identifier.copy_from_slice(pub_key.as_bytes());
         Self(identifier)
     }
 }

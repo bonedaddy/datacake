@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::net::SocketAddr;
 use std::str::FromStr;

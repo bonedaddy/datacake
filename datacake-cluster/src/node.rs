@@ -1,5 +1,4 @@
 use std::error::Error;
-use std::fmt::Debug;
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -20,7 +19,7 @@ use tokio_stream::wrappers::WatchStream;
 use tokio_stream::StreamExt;
 
 use crate::error::DatacakeError;
-use crate::node_identifier::{NodeID, NodeIdentifier};
+use crate::node_identifier::NodeID;
 use crate::{ClusterStatistics, DEFAULT_DATA_CENTER};
 
 static DATA_CENTER_KEY: &str = "data_center";

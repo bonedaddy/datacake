@@ -1,7 +1,6 @@
 mod distributor;
 mod poller;
 
-use std::borrow::Cow;
 use std::net::SocketAddr;
 
 pub const MAX_CONCURRENT_REQUESTS: usize = 10;

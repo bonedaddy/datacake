@@ -21,7 +21,6 @@ use std::fmt::Display;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::net::SocketAddr;
-use std::str::FromStr;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
@@ -45,7 +44,6 @@ pub use statistics::ClusterStatistics;
 #[cfg(any(test, feature = "test-utils"))]
 pub use storage::test_suite;
 pub use storage::{BulkMutationError, ProgressTracker, PutContext, Storage};
-use tokio::stream;
 use tokio_stream::wrappers::WatchStream;
 
 pub use self::core::Document;
@@ -420,7 +418,7 @@ where
 {
     fn clone(&self) -> Self {
         Self {
-            node_id: self.node_id.clone(),
+            node_id: self.node_id,
             public_addr: self.public_addr,
             network: self.network.clone(),
             group: self.group.clone(),
@@ -501,7 +499,7 @@ where
 
         let mut node_map = HashMap::with_capacity(64);
         nodes.iter().for_each(|(id, node)| {
-            node_map.insert(node.clone(), id.clone());
+            node_map.insert(*node, *id);
         });
 
         let node_addr = self.public_addr;
@@ -525,12 +523,9 @@ where
 
         let factory = |node| {
             let node_id = if let Some(id) = node_map.get(&node) {
-                id.clone()
+                *id
             } else {
-                panic!(
-                    "failed to find node_id in node_map for {}",
-                    node.to_string()
-                );
+                panic!("failed to find node_id in node_map for {}", node);
             };
             let clock = self.group.clock().clone();
             let keyspace = keyspace.name().to_string();
@@ -576,10 +571,10 @@ where
 
         let mut node_map = HashMap::with_capacity(64);
         nodes.iter().for_each(|(id, node)| {
-            node_map.insert(node.clone(), id.clone());
+            node_map.insert(*node, *id);
         });
 
-        let node_id = self.node_id.clone();
+        let _node_id = self.node_id;
         let node_addr = self.public_addr;
         let last_updated = self.clock.get_time().await;
         let docs = documents
@@ -604,12 +599,9 @@ where
 
         let factory = |node| {
             let node_id = if let Some(id) = node_map.get(&node) {
-                id.clone()
+                *id
             } else {
-                panic!(
-                    "failed to find node_id in node_map for {}",
-                    node.to_string()
-                );
+                panic!("failed to find node_id in node_map for {}", node);
             };
             let clock = self.group.clock().clone();
             let keyspace = keyspace.name().to_string();
@@ -650,7 +642,7 @@ where
 
         let mut node_map = HashMap::with_capacity(64);
         nodes.iter().for_each(|(id, node)| {
-            node_map.insert(node.clone(), id.clone());
+            node_map.insert(*node, *id);
         });
 
         let last_updated = self.clock.get_time().await;
@@ -672,13 +664,10 @@ where
         });
 
         let factory = |node| {
-            let node_id = if let Some(id) = node_map.get(&node) {
-                id.clone()
+            let _node_id = if let Some(id) = node_map.get(&node) {
+                *id
             } else {
-                panic!(
-                    "failed to find node_id in node_map for {}",
-                    node.to_string()
-                );
+                panic!("failed to find node_id in node_map for {}", node);
             };
             let clock = self.group.clock().clone();
             let keyspace = keyspace.name().to_string();
@@ -721,7 +710,7 @@ where
             .map_err(error::DatacakeError::ConsistencyError)?;
         let mut node_map = HashMap::with_capacity(64);
         nodes.iter().for_each(|(id, node)| {
-            node_map.insert(node.clone(), id.clone());
+            node_map.insert(*node, *id);
         });
 
         let last_updated = self.clock.get_time().await;
@@ -745,13 +734,10 @@ where
         });
 
         let factory = |node| {
-            let node_id = if let Some(id) = node_map.get(&node) {
-                id.clone()
+            let _node_id = if let Some(id) = node_map.get(&node) {
+                *id
             } else {
-                panic!(
-                    "failed to find node_id in node_map for {}",
-                    node.to_string()
-                );
+                panic!("failed to find node_id in node_map for {}", node);
             };
             let clock = self.group.clock().clone();
             let keyspace = keyspace.name().to_string();
@@ -971,7 +957,7 @@ async fn watch_membership_changes(
         let new_network_set = members
             .iter()
             .filter(|member| member.node_id != self_node_id)
-            .map(|member| (member.node_id.clone(), member.public_addr))
+            .map(|member| (member.node_id, member.public_addr))
             .collect::<HashSet<_>>();
 
         {

@@ -214,7 +214,7 @@ async fn execute_batch(
     let limiter = Arc::new(Semaphore::new(MAX_CONCURRENT_REQUESTS));
     let mut tasks = Vec::with_capacity(live_members.len());
     for (node_id, &addr) in live_members {
-        let node_id = node_id.clone();
+        let node_id = *node_id;
         let limiter = limiter.clone();
         let batch = batch.clone();
         let channel = ctx.network.get_or_connect_lazy(addr);

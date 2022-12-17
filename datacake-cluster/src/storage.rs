@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::error::Error;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};

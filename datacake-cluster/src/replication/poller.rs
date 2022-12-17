@@ -272,7 +272,7 @@ where
     let mut tasks = Vec::new();
     for keyspace in diff {
         let permits = permits.clone();
-        let target_node_id = target_node_id.clone();
+        let target_node_id = target_node_id;
         let group = ctx.group.clone();
         let client = ReplicationClient::new(ctx.clock().clone(), channel.clone());
 
